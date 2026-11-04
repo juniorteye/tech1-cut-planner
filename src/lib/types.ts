@@ -1,0 +1,95 @@
+/** Sizes are held in mm. Fractions are kept so inch entries stay accurate. */
+export type Mm = number;
+
+/** Money is held in pesewas so totals never pick up rounding errors. */
+export type Pesewas = number;
+
+export type DisplayUnit = "mm" | "ft-in";
+
+export type TeamRole = "owner" | "worker";
+
+export type TeamMember = {
+  userId: string;
+  name: string;
+  email: string;
+  role: TeamRole;
+};
+
+export type Workshop = {
+  id: string;
+  name: string;
+  kerfMm: Mm;
+  displayUnit: DisplayUnit;
+};
+
+type WorkshopRecord = {
+  id: string;
+  workshopId: string;
+};
+
+export type BoardType = "plywood" | "mdf" | "chipboard" | "melamine";
+
+export type Board = WorkshopRecord & {
+  kind: "board";
+  name: string;
+  boardType: BoardType;
+  lengthMm: Mm;
+  widthMm: Mm;
+  thicknessMm: Mm;
+  pricePerSheet: Pesewas;
+  edgeTrimMm: Mm;
+  minLeftoverShortSideMm: Mm;
+  minLeftoverAreaMm2: number;
+};
+
+export type TimberLength = {
+  lengthMm: Mm;
+  pricePerPiece: Pesewas;
+};
+
+export type Timber = WorkshopRecord & {
+  kind: "timber";
+  name: string;
+  lengths: TimberLength[];
+  minLeftoverLengthMm: Mm;
+};
+
+export type Material = Board | Timber;
+
+/** draft → accepted (leftovers reserved) → cut (stock committed). */
+export type JobStatus = "draft" | "accepted" | "cut" | "cancelled";
+
+export type QuoteMode = "whole-sheets" | "part-used";
+
+export type Job = WorkshopRecord & {
+  name: string;
+  customer: string;
+  status: JobStatus;
+  quoteMode: QuoteMode;
+  wasteAllowancePercent: number;
+  copiedFromJobId: string | null;
+};
+
+export type Piece = WorkshopRecord & {
+  jobId: string;
+  materialId: string;
+  name: string;
+  lengthMm: Mm;
+  /** Null for timber, which is only cut to length. */
+  widthMm: Mm | null;
+  quantity: number;
+  grainLocked: boolean;
+};
+
+export type LeftoverStatus = "available" | "reserved" | "used" | "damaged";
+
+export type Leftover = WorkshopRecord & {
+  materialId: string;
+  lengthMm: Mm;
+  widthMm: Mm | null;
+  status: LeftoverStatus;
+  /** Share of the original purchase price, fixed when the offcut is created. */
+  value: Pesewas;
+  sourceJobId: string | null;
+  usedByJobId: string | null;
+};
