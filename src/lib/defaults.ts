@@ -1,7 +1,14 @@
 import type { BoardType, Mm } from "./types";
 
-/** Market sheet labels map to the real sheet, not the exact foot conversion. */
-export const STANDARD_SHEET = { lengthMm: 2440, widthMm: 1220 };
+/**
+ * The workshop sizes boards at 30.25 cm to the foot, so these are the sizes
+ * the client works with, not the exact foot conversion.
+ * 8 × 4 ft: 8 × 30.25 = 242 cm by 4 × 30.25 = 121 cm.
+ */
+export const STANDARD_SHEET = { lengthMm: 2420, widthMm: 1210 };
+
+/** 9 × 7 ft at the same 30.25 cm to the foot: 272 × 212 cm. */
+export const LARGE_SHEET = { lengthMm: 2720, widthMm: 2120 };
 
 /** Lengths the market sells planks in, in feet. */
 export const PLANK_LENGTHS_FT = [8, 10, 12, 14, 16];

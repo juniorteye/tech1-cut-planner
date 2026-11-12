@@ -1,8 +1,29 @@
-import type { BoardLayout } from "@/lib/planner/types";
+import type { BoardLayout, Placement } from "@/lib/planner/types";
+
+type Line = { x1: number; y1: number; x2: number; y2: number };
+
+/** Long-side banding goes on the piece's longer edges, however it lies on the board. */
+function bandedLines(placed: Placement): Line[] {
+  const { x, y, lengthMm: across, widthMm: down } = placed;
+  const horizontal = [
+    { x1: x, y1: y, x2: x + across, y2: y },
+    { x1: x, y1: y + down, x2: x + across, y2: y + down },
+  ];
+  const vertical = [
+    { x1: x, y1: y, x2: x, y2: y + down },
+    { x1: x + across, y1: y, x2: x + across, y2: y + down },
+  ];
+  const [lengthEdges, widthEdges] = across >= down ? [horizontal, vertical] : [vertical, horizontal];
+  return [
+    ...lengthEdges.slice(0, placed.bandedLengths ?? 0),
+    ...widthEdges.slice(0, placed.bandedWidths ?? 0),
+  ];
+}
 
 export function BoardDiagram({ board }: { board: BoardLayout }) {
   const { lengthMm, widthMm } = board;
   const text = Math.max(lengthMm, widthMm) * 0.06;
+  const band = Math.max(lengthMm, widthMm) * 0.005;
 
   return (
     <svg
@@ -22,6 +43,9 @@ export function BoardDiagram({ board }: { board: BoardLayout }) {
             stroke="#a6875c"
             strokeWidth={Math.max(lengthMm, widthMm) * 0.002}
           />
+          {bandedLines(placed).map((line, i) => (
+            <line key={i} {...line} stroke="var(--color-ink)" strokeWidth={band} strokeLinecap="square" />
+          ))}
           <text
             x={placed.x + placed.lengthMm / 2}
             y={placed.y + placed.widthMm / 2}
@@ -52,11 +76,12 @@ export function BoardDiagram({ board }: { board: BoardLayout }) {
   );
 }
 
-export function DiagramLegend() {
+export function DiagramLegend({ banding = false }: { banding?: boolean }) {
   const items = [
     ["bg-timber", "Your pieces"],
     ["bg-keep", "Saved for later"],
     ["bg-[#c6c8c2]", "Waste"],
+    ...(banding ? [["bg-timber border-l-4 border-l-ink", "Edge banding"]] : []),
   ];
 
   return (

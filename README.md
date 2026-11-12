@@ -35,4 +35,7 @@ Shared data shapes are in `src/lib/types.ts` and default settings in `src/lib/de
 ## Testing
 
 - `npm test` runs the planner and unit tests.
-- `npm run test:client` builds the app and plays a full workshop week in a real browser against the live Supabase project. It creates a throwaway workshop and logins, removes them afterwards, and checks that real workshops were not touched. Screenshots and PDFs land in `e2e/output/`.
+- `npm run test:client` builds the app and plays a full workshop week in a real browser against the live Supabase project. It creates a throwaway workshop and logins, removes them afterwards, and checks that real workshops were not touched. Screenshots and PDFs land in `e2e/output/week/`.
+- `npm run test:banding` enters the client's console sketch the way he works: centimetres, the board picked first, banded edges tapped on the rectangle. After every part it checks the live totals against figures worked out by hand: 27.41 m of banding and 2 boards on a 121 × 242 cm board, 1 board on 212 × 272 cm. It also covers mistakes, timber, other units, a phone, the cut sheet and old saved plans. Same throwaway workshop rules as above; output in `e2e/output/banding/`.
+
+Both browser tests share `e2e/harness.mjs` (server, logins, clean-up, screen-size rules).

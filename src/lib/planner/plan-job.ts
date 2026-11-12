@@ -1,4 +1,5 @@
 import type { Leftover, Material, Mm, Piece } from "../types";
+import { jobBanding } from "./banding.ts";
 import { packBoards } from "./boards.ts";
 import { packPlanks } from "./planks.ts";
 import type { BoardLayout, BuyItem, JobPlan, OffcutToSave, PlankLayout, PlannerCut, PlannerPiece, UnplacedPiece } from "./types";
@@ -53,6 +54,8 @@ export function planJob({ pieces, materials, leftovers, kerfMm }: PlanJobInput):
         lengthMm: piece.lengthMm,
         widthMm: piece.widthMm ?? piece.lengthMm,
         grainLocked: piece.grainLocked,
+        bandedLengths: piece.bandedLengths,
+        bandedWidths: piece.bandedWidths,
       }));
       const result = packBoards({
         pieces: planned,
@@ -163,5 +166,6 @@ export function planJob({ pieces, materials, leftovers, kerfMm }: PlanJobInput):
       (sum, stock) => sum + (stock.source === "leftover" ? stock.value : 0),
       0,
     ),
+    banding: jobBanding(pieces, materials),
   };
 }

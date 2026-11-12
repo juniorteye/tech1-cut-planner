@@ -1,20 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FormField } from "@/components/form-field";
 import { SelectField } from "@/components/select-field";
-import { STANDARD_SHEET } from "@/lib/defaults";
+import { LARGE_SHEET, STANDARD_SHEET } from "@/lib/defaults";
 import type { Board } from "@/lib/types";
 import { formatMoneyInput } from "./format";
 
 export function BoardFields({ board }: { board?: Board }) {
-  const isStandard =
-    !board ||
-    (board.lengthMm === STANDARD_SHEET.lengthMm && board.widthMm === STANDARD_SHEET.widthMm);
-  const [size, setSize] = useState(isStandard ? "standard" : "other");
+  const matches = (sheet: { lengthMm: number; widthMm: number }) =>
+    board?.lengthMm === sheet.lengthMm && board?.widthMm === sheet.widthMm;
+  const initial = !board || matches(STANDARD_SHEET) ? "standard" : matches(LARGE_SHEET) ? "large" : "other";
+  const [size, setSize] = useState(initial);
+  const root = useRef<HTMLDivElement>(null);
+
+  // A saved "Add board" form is cleared, so the size goes back to match it.
+  // Otherwise "Other size" would stay picked with its boxes emptied.
+  useEffect(() => {
+    const form = root.current?.closest("form");
+    const onReset = () => setSize(initial);
+    form?.addEventListener("reset", onReset);
+    return () => form?.removeEventListener("reset", onReset);
+  }, [initial]);
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div ref={root} className="grid gap-3 sm:grid-cols-2">
       {board && <input type="hidden" name="id" value={board.id} />}
       <FormField label="Name" name="name" defaultValue={board?.name} placeholder="Plywood 18 mm" required />
       <SelectField label="Type" name="boardType" defaultValue={board?.boardType ?? "plywood"}>
@@ -24,7 +34,8 @@ export function BoardFields({ board }: { board?: Board }) {
         <option value="melamine">Melamine</option>
       </SelectField>
       <SelectField label="Sheet size" name="size" value={size} onChange={(e) => setSize(e.target.value)}>
-        <option value="standard">8 × 4 ft (2440 × 1220 mm)</option>
+        <option value="standard">8 × 4 ft (242 × 121 cm)</option>
+        <option value="large">9 × 7 ft (272 × 212 cm)</option>
         <option value="other">Other size</option>
       </SelectField>
       {size === "other" && (

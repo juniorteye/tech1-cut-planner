@@ -8,6 +8,7 @@ import {
   DEFAULT_MIN_LEFTOVER_AREA_MM2,
   DEFAULT_MIN_LEFTOVER_LENGTH_MM,
   DEFAULT_MIN_LEFTOVER_SHORT_SIDE_MM,
+  LARGE_SHEET,
   PLANK_LENGTHS_FT,
   STANDARD_SHEET,
 } from "@/lib/defaults";
@@ -44,9 +45,10 @@ export async function saveBoard(_state: ActionResult, data: FormData): Promise<A
   const workshop = await getWorkshop();
   const id = text(data, "id");
   const boardType = text(data, "boardType") as BoardType;
-  const standard = text(data, "size") !== "other";
-  const lengthMm = standard ? STANDARD_SHEET.lengthMm : parseLength(text(data, "length"), "mm");
-  const widthMm = standard ? STANDARD_SHEET.widthMm : parseLength(text(data, "width"), "mm");
+  const size = text(data, "size");
+  const preset = size === "large" ? LARGE_SHEET : size === "other" ? null : STANDARD_SHEET;
+  const lengthMm = preset ? preset.lengthMm : parseLength(text(data, "length"), "mm");
+  const widthMm = preset ? preset.widthMm : parseLength(text(data, "width"), "mm");
   const thicknessMm = parseLength(text(data, "thickness"), "mm");
   const price = parseMoney(text(data, "price"));
   const trimText = text(data, "trim");

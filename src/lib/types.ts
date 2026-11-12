@@ -4,7 +4,7 @@ export type Mm = number;
 /** Money is held in pesewas so totals never pick up rounding errors. */
 export type Pesewas = number;
 
-export type DisplayUnit = "mm" | "ft-in";
+export type DisplayUnit = "mm" | "cm" | "ft-in";
 
 export type TeamRole = "owner" | "worker";
 
@@ -79,6 +79,13 @@ export type Piece = WorkshopRecord & {
   widthMm: Mm | null;
   quantity: number;
   grainLocked: boolean;
+  /**
+   * How many of the two long sides are banded: 0, 1 or 2. Always 0 for timber.
+   * The workshop calls the longer side the length, whichever size was typed first.
+   */
+  bandedLengths: number;
+  /** How many of the two short sides are banded: 0, 1 or 2. */
+  bandedWidths: number;
 };
 
 export type LeftoverStatus = "available" | "reserved" | "used" | "damaged";

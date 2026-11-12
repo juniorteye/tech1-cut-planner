@@ -1,4 +1,5 @@
 import type { Mm, Pesewas } from "../types";
+import type { BandingLine } from "./banding";
 
 export type Rect = {
   x: Mm;
@@ -14,6 +15,8 @@ export type PlannerPiece = {
   lengthMm: Mm;
   widthMm: Mm;
   grainLocked: boolean;
+  bandedLengths?: number;
+  bandedWidths?: number;
 };
 
 export type PlannerCut = {
@@ -27,6 +30,9 @@ export type Placement = Rect & {
   number: number;
   name: string;
   turned: boolean;
+  /** Long and short sides banded, so turning does not change them. Missing on plans saved before banding. */
+  bandedLengths?: number;
+  bandedWidths?: number;
 };
 
 export type BoardLeftover = {
@@ -111,4 +117,6 @@ export type JobPlan = {
   plankWastePercent: number | null;
   buyCost: Pesewas;
   leftoverCost: Pesewas;
+  /** Missing on plans saved before banding was added. */
+  banding?: BandingLine[];
 };

@@ -8,7 +8,7 @@ import { PlankDiagram } from "./plank-diagram";
 export function PlanBoards({ plan, unit }: { plan: JobPlan; unit: DisplayUnit }) {
   return (
     <>
-      {plan.boards.length > 0 && <DiagramLegend />}
+      {plan.boards.length > 0 && <DiagramLegend banding={(plan.banding ?? []).length > 0} />}
       {plan.boards.map((board, index) => (
         <Card key={index}>
           <h2 className="font-display text-xl font-bold">

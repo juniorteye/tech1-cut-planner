@@ -63,6 +63,8 @@ export async function copyJob(_state: ActionResult, data: FormData): Promise<Act
         width_mm: piece.widthMm,
         quantity: piece.quantity,
         grain_locked: piece.grainLocked,
+        banded_lengths: piece.bandedLengths,
+        banded_widths: piece.bandedWidths,
       })),
     );
     if (piecesError) return { error: "The job was copied, but its pieces were not." };
@@ -113,23 +115,33 @@ export async function addPiece(_state: ActionResult, data: FormData): Promise<Ac
   const lengthMm = parseLength(text(data, "length"), workshop.displayUnit);
   const widthMm = parseLength(text(data, "width"), workshop.displayUnit);
   const quantity = Number(text(data, "quantity") || 1);
+  const bandedLengths = Number(text(data, "bandedLengths") || 0);
+  const bandedWidths = Number(text(data, "bandedWidths") || 0);
+  const edgeCounts = [0, 1, 2];
 
-  if (!text(data, "name")) return { error: "Name the piece, for example Side panel." };
-  if (!material) return { error: "Choose a material." };
+  if (!material) return { error: "Choose a board." };
   if (lengthMm === null) return { error: `Check the length. Try 720 or 2' 4".` };
   if (material.kind === "board" && widthMm === null) return { error: `Check the width. Try 560 or 1' 10".` };
   if (!Number.isInteger(quantity) || quantity < 1) return { error: "How many must be a whole number." };
+  if (!edgeCounts.includes(bandedLengths) || !edgeCounts.includes(bandedWidths)) {
+    return { error: "Tap the edges again to mark the banding." };
+  }
 
   const supabase = await createClient();
+  // A name is optional: the sketch only has sizes, so an unnamed part is numbered by its line.
+  const { count } = await supabase.from("pieces").select("id", { count: "exact", head: true }).eq("job_id", jobId);
+  const isBoard = material.kind === "board";
   const { error } = await supabase.from("pieces").insert({
     workshop_id: workshop.id,
     job_id: jobId,
     material_id: materialId,
-    name: text(data, "name"),
+    name: text(data, "name") || `Part ${(count ?? 0) + 1}`,
     length_mm: lengthMm,
-    width_mm: material.kind === "board" ? widthMm : null,
+    width_mm: isBoard ? widthMm : null,
     quantity,
     grain_locked: data.get("grainLocked") === "on",
+    banded_lengths: isBoard ? bandedLengths : 0,
+    banded_widths: isBoard ? bandedWidths : 0,
   });
 
   if (error) return { error: "Could not add the piece." };

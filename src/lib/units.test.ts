@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatLength, formatMoney, parseLength, parseMoney } from "./units.ts";
+import { formatLength, formatMetres, formatMoney, formatSize, parseLength, parseMoney } from "./units.ts";
 
 test("bare numbers follow the workshop's unit", () => {
   assert.equal(parseLength("720", "mm"), 720);
   assert.equal(parseLength("27", "ft-in"), 685.8);
+  assert.equal(parseLength("206.4", "cm"), 2064);
+  assert.equal(parseLength("2064mm", "cm"), 2064);
+  assert.equal(parseLength("8ft", "cm"), 2438.4);
 });
 
 test("marked units win over the workshop's unit", () => {
@@ -31,6 +34,9 @@ test("formats lengths for each unit", () => {
   assert.equal(formatLength(720, "mm"), "720 mm");
   assert.equal(formatLength(698.5, "ft-in"), `2' 3 1/2"`);
   assert.equal(formatLength(12.7, "ft-in"), `1/2"`);
+  assert.equal(formatLength(2064, "cm"), "206.4 cm");
+  assert.equal(formatSize(2100, 350, "cm"), "210 × 35 cm");
+  assert.equal(formatMetres(26872), "26.87 m");
 });
 
 test("money round-trips through pesewas", () => {

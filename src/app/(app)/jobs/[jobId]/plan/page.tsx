@@ -6,8 +6,9 @@ import { PlanBoards } from "@/components/plan-boards";
 import { getJob, getLeftovers, getMaterials, getPieces, getPlan, getWorkshop } from "@/lib/data";
 import { planJob } from "@/lib/planner/plan-job";
 import { quoteTotal } from "@/lib/planner/quote";
-import { formatMoney, formatSize } from "@/lib/units";
+import { formatMetres, formatMoney, formatSize } from "@/lib/units";
 import { acceptPlan, markJobCut, reopenJob, undoJobCut } from "../../actions";
+import { OffcutNote } from "@/components/offcut-note";
 
 function Stat({ value, label, className = "" }: { value: string; label: string; className?: string }) {
   return (
@@ -45,6 +46,9 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
   const unit = workshop.displayUnit;
   const sheets = plan.buy.filter((item) => item.widthMm !== null).reduce((sum, item) => sum + item.count, 0);
   const planks = plan.buy.filter((item) => item.widthMm === null).reduce((sum, item) => sum + item.count, 0);
+  const fromStore = [...plan.boards, ...plan.planks].filter((stock) => stock.source === "leftover").length;
+  const banding = plan.banding ?? [];
+  const bandingMm = banding.reduce((sum, line) => sum + line.mm, 0);
 
   return (
     <div className="space-y-5">
@@ -66,16 +70,21 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat value={String(sheets)} label={sheets === 1 ? "sheet to buy" : "sheets to buy"} />
+      <div className={`grid grid-cols-2 gap-4 ${bandingMm > 0 ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+        <Stat value={String(sheets)} label={sheets === 1 ? "board to buy" : "boards to buy"} />
         {planks > 0 ? (
           <Stat value={String(planks)} label={planks === 1 ? "plank to buy" : "planks to buy"} />
         ) : (
           <Stat value={String(plan.pieceCount)} label="pieces cut" />
         )}
         <Stat value={wasteLabel(plan.boardWastePercent ?? plan.plankWastePercent)} label="wood wasted" />
+        {bandingMm > 0 && <Stat value={formatMetres(bandingMm)} label="edge banding" />}
         {/* Full width on phones, so a large amount stays on one line. */}
-        <Stat value={formatMoney(quoteTotal(plan, job))} label="material cost" className="col-span-2 sm:col-span-1" />
+        <Stat
+          value={formatMoney(quoteTotal(plan, job))}
+          label="material cost"
+          className={bandingMm > 0 ? "col-span-2" : "col-span-2 sm:col-span-1"}
+        />
       </div>
 
       {plan.buy.length > 0 && (
@@ -84,6 +93,14 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
           {plan.buy
             .map((item) => `${item.count} of ${item.name} (${formatSize(item.lengthMm, item.widthMm, unit)})`)
             .join(", ")}
+        </p>
+      )}
+
+      {fromStore > 0 && <OffcutNote count={fromStore} />}
+
+      {banding.length > 1 && (
+        <p className="text-sm text-muted">
+          Banding: {banding.map((line) => `${line.materialName} ${formatMetres(line.mm)}`).join(", ")}
         </p>
       )}
 

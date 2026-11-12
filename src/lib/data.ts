@@ -86,6 +86,8 @@ function toPiece(row: Row): Piece {
     widthMm: nullableNumber(row.width_mm),
     quantity: Number(row.quantity),
     grainLocked: row.grain_locked as boolean,
+    bandedLengths: Number(row.banded_lengths ?? 0),
+    bandedWidths: Number(row.banded_widths ?? 0),
   };
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Board, Leftover, Piece, Timber } from "../types";
+import { describeEdges, jobBanding, pieceBandingMm } from "./banding.ts";
 import { isGuillotine, packBoards, type BoardPackInput } from "./boards.ts";
 import { packPlanks } from "./planks.ts";
 import { planJob } from "./plan-job.ts";
@@ -245,7 +246,8 @@ const twoByFour: Timber = {
   lengths: [{ lengthMm: 3658, pricePerPiece: 8000 }],
 };
 const piece = (over: Partial<Piece>): Piece => ({
-  ...record, id: "p", jobId: "j", materialId: "ply", name: "Side", lengthMm: 720, widthMm: 560, quantity: 2, grainLocked: false, ...over,
+  ...record, id: "p", jobId: "j", materialId: "ply", name: "Side", lengthMm: 720, widthMm: 560, quantity: 2, grainLocked: false,
+  bandedLengths: 0, bandedWidths: 0, ...over,
 });
 
 test("planJob totals what to buy, numbers pieces and records offcuts", () => {
@@ -281,4 +283,81 @@ test("quotes: whole sheets bills the sheet, part used bills the area plus allowa
   assert.equal(quoteTotal(plan, { quoteMode: "whole-sheets", wasteAllowancePercent: 10 }), 45000);
   assert.equal(quoteTotal(plan, { quoteMode: "part-used", wasteAllowancePercent: 0 }), 22500);
   assert.equal(quoteTotal(plan, { quoteMode: "part-used", wasteAllowancePercent: 10 }), 24750);
+});
+
+// The client's console sketch, in cm as written: length × width – quantity, banded long sides, banded short sides.
+const CONSOLE: [number, number, number, number, number][] = [
+  [210, 35, 1, 1, 0],
+  [206.4, 10, 4, 1, 0],
+  [26.4, 35, 4, 1, 0],
+  [28.2, 38, 2, 1, 0],
+  [213.6, 38, 1, 1, 2],
+  [70, 12, 6, 1, 0],
+  [30, 12, 6, 1, 0],
+  [70, 30, 3, 2, 2],
+];
+const consolePieces = (material = "ply") =>
+  CONSOLE.map(([length, width, quantity, bandedLengths, bandedWidths], i) =>
+    piece({ id: `c${i}`, materialId: material, name: `Part ${i + 1}`, lengthMm: length * 10, widthMm: width * 10, quantity, bandedLengths, bandedWidths }),
+  );
+
+test("banding: a long mark bands the longer side, whichever size was typed first", () => {
+  assert.equal(pieceBandingMm({ lengthMm: 2136, widthMm: 380, bandedLengths: 1, bandedWidths: 2 }), 2896);
+  assert.equal(pieceBandingMm({ lengthMm: 264, widthMm: 350, bandedLengths: 1, bandedWidths: 0 }), 350);
+  assert.equal(pieceBandingMm({ lengthMm: 264, widthMm: 350, bandedLengths: 0, bandedWidths: 1 }), 264);
+  assert.equal(pieceBandingMm({ lengthMm: 700, widthMm: 300, bandedLengths: 2, bandedWidths: 2 }), 2000);
+  assert.equal(pieceBandingMm({ lengthMm: 900, widthMm: null, bandedLengths: 0, bandedWidths: 0 }), 0);
+  assert.equal(describeEdges({ bandedLengths: 2, bandedWidths: 2 }), "all 4 edges");
+  assert.equal(describeEdges({ bandedLengths: 1, bandedWidths: 2 }), "1 long + 2 short");
+  assert.equal(describeEdges({ bandedLengths: 0, bandedWidths: 0 }), "none");
+});
+
+test("banding: the console sketch comes to 27.41 m, with no edge missed", () => {
+  const [line] = jobBanding(consolePieces(), [ply, twoByFour]);
+  assert.equal(Math.round(line.mm), 27412);
+  assert.equal(line.materialName, "Ply 18");
+});
+
+test("banding: timber never counts, and each board material is totalled apart", () => {
+  const mel: Board = { ...ply, id: "mel", name: "Melamine 16" };
+  const lines = jobBanding(
+    [
+      piece({ bandedLengths: 2, quantity: 1 }),
+      piece({ id: "m", materialId: "mel", bandedWidths: 1, quantity: 3 }),
+      piece({ id: "t", materialId: "t", widthMm: null, bandedLengths: 2 }),
+    ],
+    [ply, mel, twoByFour],
+  );
+  assert.deepEqual(lines.map((l) => [l.materialName, l.mm]), [["Ply 18", 1440], ["Melamine 16", 1680]]);
+});
+
+const board4x8: Board = { ...ply, id: "b48", name: "Board 4×8", lengthMm: 2420, widthMm: 1210 };
+
+test("the console on the client's 121 × 242 cm board: every part placed, banding carried into the plan", () => {
+  const plan = planJob({ pieces: consolePieces("b48"), materials: [board4x8], leftovers: [], kerfMm: 3 });
+  assert.equal(plan.unplaced.length, 0);
+  assert.equal(plan.pieceCount, 27);
+  assert.equal(plan.buy[0].count, 2);
+  assert.equal(Math.round(plan.banding![0].mm), 27412);
+  const top = plan.boards.flatMap((b) => b.placements).find((p) => p.name === "Part 5")!;
+  assert.deepEqual([top.bandedLengths, top.bandedWidths], [1, 2]);
+});
+
+test("a 212 × 272 cm board takes the whole console on one sheet", () => {
+  const big: Board = { ...ply, id: "big", name: "Board 7×9", lengthMm: 2720, widthMm: 2120 };
+  const plan = planJob({ pieces: consolePieces("big"), materials: [big], leftovers: [], kerfMm: 3 });
+  assert.equal(plan.unplaced.length, 0);
+  assert.equal(plan.buy[0].count, 1);
+});
+
+test("boards to buy counts only new sheets, never offcuts from the store", () => {
+  const offcut: Leftover = {
+    ...record, id: "off", materialId: "b48", lengthMm: 1000, widthMm: 500, status: "available", value: 7700, sourceJobId: null, usedByJobId: null,
+  };
+  const plan = planJob({ pieces: consolePieces("b48"), materials: [board4x8], leftovers: [offcut], kerfMm: 3 });
+  const newSheets = plan.boards.filter((board) => board.source === "sheet").length;
+  assert.deepEqual(plan.leftoverIds, ["off"]);
+  assert.equal(plan.buy[0].count, newSheets);
+  assert.equal(plan.buy[0].count, 2);
+  assert.equal(plan.boards.length, 3);
 });

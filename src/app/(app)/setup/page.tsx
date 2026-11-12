@@ -25,6 +25,7 @@ export default async function SetupPage() {
             <FormField label="Blade cut thickness (mm)" name="kerf" inputMode="decimal" defaultValue={workshop.kerfMm} required />
             <SelectField label="Show sizes in" name="unit" defaultValue={unit}>
               <option value="mm">Millimetres</option>
+              <option value="cm">Centimetres</option>
               <option value="ft-in">Feet and inches</option>
             </SelectField>
           </div>

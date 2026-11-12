@@ -5,270 +5,57 @@
 // proves the real workshops were not touched. Expected money and sheet counts are
 // worked out by hand here, never read from the app.
 import { createClient } from "@supabase/supabase-js";
-import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { mkdirSync, openSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
+import {
+  BASE,
+  LAPTOP,
+  OUTPUT,
+  PHONE,
+  WORKSHOP,
+  accept,
+  addLogin,
+  addPiece,
+  admin,
+  askToDelete,
+  check,
+  checkEqual,
+  checkEverySize,
+  clickAndWaitFor,
+  collapse,
+  created,
+  emailFor,
+  expectNoSidewaysScroll,
+  finish,
+  form,
+  imageShows,
+  jobExists,
+  jobRow,
+  logIn,
+  main,
+  newJob,
+  newPage,
+  newPassword,
+  openPlan,
+  pageErrors,
+  publishable,
+  removePiece,
+  section,
+  snapshotOtherWorkshops,
+  startServer,
+  stopServer,
+  submit,
+  url,
+  waitForPiece,
+  waitForServer,
+  waitForUnit,
+  prepareOutput,
+} from "./harness.mjs";
 
-const PORT = 3460;
-const BASE = `http://127.0.0.1:${PORT}`;
-const OUTPUT = "e2e/output";
-const WORKSHOP = "Client Test Workshop";
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const publishable = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-const admin = createClient(url, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
-
-const stamp = Date.now();
-const emailFor = (name) => `client-test-${name}-${stamp}@example.com`;
-const newPassword = () => randomBytes(12).toString("hex");
-
-const LAPTOP = { viewport: { width: 1280, height: 800 } };
-const PHONE = { viewport: { width: 390, height: 844 } };
+// The wardrobe's figures were worked out by hand on a 2440 × 1220 sheet, so its
+// plywood is entered as "Other size". The console uses the client's own 8 × 4.
 const SHEET = { length: 2440, width: 1220 };
 const KERF = 3;
-
-const results = [];
-const created = { users: [], workshops: [] };
-const pageErrors = [];
-
-function check(name, passed, detail = "") {
-  results.push({ name, passed, detail });
-  console.log(`  ${passed ? "✓" : "✗"} ${name}${passed || !detail ? "" : `  →  ${detail}`}`);
-}
-
-function checkEqual(name, actual, expected) {
-  check(name, actual === expected, `expected ${expected}, got ${actual}`);
-}
-
-let currentSection = "";
-
-async function section(title, run) {
-  currentSection = title;
-  console.log(`\n${title}`);
-  try {
-    await run();
-  } catch (error) {
-    const waitingFor = error.message.match(/waiting for (.*)/)?.[1] ?? "";
-    check(`${title} finished`, false, `${error.message.split("\n")[0]} ${waitingFor}`);
-    for (const page of openPages) {
-      await page.screenshot({ path: `${OUTPUT}/failed-${results.length}.png`, fullPage: true }).catch(() => {});
-    }
-  }
-}
-
-let server;
-const openPages = [];
-
-function startServer() {
-  const log = openSync(`${OUTPUT}/server.log`, "a");
-  server = spawn("npx", ["next", "start", "-p", String(PORT), "-H", "127.0.0.1"], { stdio: ["ignore", log, log], detached: true });
-}
-
-async function serverIsUp() {
-  return fetch(`${BASE}/login`).then(() => true, () => false);
-}
-
-async function waitForServer(up) {
-  for (let i = 0; i < 120; i++) {
-    if ((await serverIsUp()) === up) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Server did not ${up ? "start" : "stop"}`);
-}
-
-function stopServer() {
-  try {
-    process.kill(-server.pid, "SIGKILL");
-  } catch {}
-}
-
-async function newPage(browser, device) {
-  const context = await browser.newContext(device);
-  const page = await context.newPage();
-  page.setDefaultTimeout(15000);
-  page.on("pageerror", (error) => pageErrors.push(`${currentSection} @ ${page.url()}: ${error.message}`));
-  page.on("console", (message) => {
-    if (message.type() === "error" && !message.text().includes("Failed to load resource")) {
-      pageErrors.push(`${currentSection} @ ${page.url()}: ${message.text()}`);
-    }
-  });
-  openPages.push(page);
-  return page;
-}
-
-async function addLogin(name, password) {
-  const email = emailFor(name);
-  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-  if (error) throw error;
-  created.users.push(data.user.id);
-  return { email, password, id: data.user.id };
-}
-
-async function logIn(page, { email, password }) {
-  await page.goto(`${BASE}/login`);
-  await page.fill("input[name=email]", email);
-  await page.fill("input[name=password]", password);
-  await page.getByRole("button", { name: "Log in" }).click();
-}
-
-const main = (page) => page.locator("main").innerText();
-const collapse = (text) => text.replace(/\s+/g, " ");
-const form = (page, button) => page.locator("form", { has: page.getByRole("button", { name: button, exact: true }) });
-const submit = (scope, name) => scope.getByRole("button", { name, exact: true }).click();
-
-// From a small Android phone up to a wide desktop, plus a phone held sideways.
-const SCREEN_SIZES = [
-  { name: "small phone", width: 320, height: 640 },
-  { name: "phone", width: 390, height: 844 },
-  { name: "phone sideways", width: 844, height: 390 },
-  { name: "tablet", width: 768, height: 1024 },
-  { name: "tablet sideways", width: 1024, height: 768 },
-  { name: "laptop", width: 1280, height: 800 },
-  { name: "wide screen", width: 1920, height: 1080 },
-];
-
-// Measures one screen as it is now. Phones get the touch rules: tap targets at
-// least 40 px and inputs at 16 px, below which iPhones zoom in on focus.
-function measureScreen() {
-  const width = window.innerWidth;
-  const touch = width < 640;
-  const describe = (el) =>
-    `<${el.tagName.toLowerCase()}> "${(el.innerText || el.value || el.getAttribute("aria-label") || "").trim().slice(0, 30)}"`;
-  const visible = (el) => {
-    const box = el.getBoundingClientRect();
-    return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== "hidden";
-  };
-  const clipped = (el) => {
-    for (let parent = el.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-      if (["auto", "scroll", "hidden", "clip"].includes(getComputedStyle(parent).overflowX)) return true;
-    }
-    return false;
-  };
-
-  const problems = [];
-  const overflow = document.documentElement.scrollWidth - width;
-  if (overflow > 0) problems.push(`page scrolls sideways by ${overflow}px`);
-
-  for (const el of document.querySelectorAll("body *")) {
-    if (!visible(el) || clipped(el) || el.closest("next-route-announcer, nextjs-portal")) continue;
-    const box = el.getBoundingClientRect();
-    if (box.right > width + 1 || box.left < -1) problems.push(`${describe(el)} sticks out of the screen`);
-  }
-
-  if (touch) {
-    for (const el of document.querySelectorAll("button, a, select, input:not([type=hidden]):not([type=checkbox]), textarea")) {
-      if (!visible(el)) continue;
-      const box = el.getBoundingClientRect();
-      if (box.height < 40) problems.push(`${describe(el)} is only ${Math.round(box.height)}px tall to tap`);
-      if (el.matches("input, select, textarea") && parseFloat(getComputedStyle(el).fontSize) < 16) {
-        problems.push(`${describe(el)} text is under 16px, so iPhones zoom in`);
-      }
-    }
-    for (const box of document.querySelectorAll("input[type=checkbox]")) {
-      const target = (box.closest("label") ?? box).getBoundingClientRect();
-      if (target.height < 40) problems.push(`the "${box.closest("label")?.innerText.trim()}" tick box is only ${Math.round(target.height)}px tall to tap`);
-    }
-  }
-
-  const nav = document.querySelector("header nav");
-  const main = document.querySelector("main");
-  if (nav && main && getComputedStyle(nav).position === "fixed") {
-    window.scrollTo(0, document.documentElement.scrollHeight);
-    const lastThing = [...main.querySelectorAll("button, a, input, select, p, td")].filter(visible).at(-1);
-    if (lastThing && lastThing.getBoundingClientRect().bottom > nav.getBoundingClientRect().top) {
-      problems.push(`the bottom menu covers ${describe(lastThing)}`);
-    }
-    window.scrollTo(0, 0);
-  }
-  return [...new Set(problems)];
-}
-
-/** Checks one screen at every size. `open` puts it in the state to check, after each resize. */
-async function checkEverySize(page, label, open = async () => {}) {
-  const problems = [];
-  const slug = label.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-  for (const size of SCREEN_SIZES) {
-    await page.setViewportSize({ width: size.width, height: size.height });
-    await open();
-    await page.evaluate(() => document.fonts.ready);
-    for (const problem of await page.evaluate(measureScreen)) problems.push(`${size.name}: ${problem}`);
-    await page.screenshot({ path: `${OUTPUT}/sizes/${slug}-${size.width}.png`, fullPage: true });
-  }
-  check(`${label} works at every screen size`, problems.length === 0, problems.slice(0, 8).join("\n      "));
-}
-
-async function expectNoSidewaysScroll(page, label) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  check(`${label} fits a phone screen`, overflow <= 0, `${overflow}px too wide`);
-}
-
-async function addPiece(page, { name, material, length, width, quantity = 1, grain = false }) {
-  const pieceForm = form(page, "Add piece");
-  await pieceForm.locator("select[name=materialId]").selectOption({ label: material });
-  await pieceForm.locator("input[name=name]").fill(name);
-  await pieceForm.locator("input[name=length]").fill(length);
-  if (width) await pieceForm.locator("input[name=width]").fill(width);
-  await pieceForm.locator("input[name=quantity]").fill(String(quantity));
-  if (grain) await pieceForm.locator("input[name=grainLocked]").check();
-  await submit(pieceForm, "Add piece");
-}
-
-async function waitForPiece(page, quantity, name) {
-  await page.getByText(`${quantity} × ${name}`, { exact: true }).waitFor();
-}
-
-async function removePiece(page, name) {
-  const row = page.locator("li", { hasText: `× ${name}` });
-  await row.getByRole("button", { name: "Remove" }).click();
-  await row.waitFor({ state: "detached" });
-}
-
-async function newJob(page, name, customer) {
-  await page.goto(`${BASE}/jobs/new`);
-  await page.fill("input[name=name]", name);
-  await page.fill("input[name=customer]", customer);
-  await page.getByRole("button", { name: "Create job" }).click();
-  await page.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
-  return page.url();
-}
-
-async function openPlan(page, jobUrl) {
-  await page.goto(`${jobUrl}/plan`);
-  await page.getByRole("heading", { name: "Your cutting plan" }).waitFor();
-  return collapse(await main(page));
-}
-
-async function accept(page) {
-  await page.getByRole("button", { name: "Yes: accept this plan" }).click();
-  await page.waitForURL("**/cut-sheet");
-  await page.getByText("Numbered list").waitFor();
-}
-
-/** True once the image has really loaded, not just been put on the page. */
-async function imageShows(image) {
-  await image.waitFor();
-  return image.evaluate(async (img) => {
-    await img.decode().catch(() => {});
-    return img.complete && img.naturalWidth > 0;
-  });
-}
-
-const jobRow = (page, name) => page.locator("main li", { hasText: name });
-
-async function askToDelete(row) {
-  await row.getByRole("button", { name: "Delete" }).click();
-  await row.getByText("This cannot be undone.").waitFor();
-}
-
-async function jobExists(id) {
-  const { data } = await admin.from("jobs").select("id").eq("id", id);
-  return data.length === 1;
-}
-
-async function clickAndWaitFor(page, button, next) {
-  await page.getByRole("button", { name: button }).click();
-  await page.getByRole("button", { name: next }).waitFor();
-}
 
 function gapBetween(a, b) {
   const across = Math.max(a.x - (b.x + b.lengthMm), b.x - (a.x + a.lengthMm));
@@ -316,31 +103,6 @@ function checkLayout(plan, ordered) {
   }
 }
 
-async function snapshotOtherWorkshops() {
-  const { data: workshops } = await admin.from("workshops").select("id, name, kerf_mm, display_unit").order("id");
-  const others = (workshops ?? []).filter((workshop) => !created.workshops.includes(workshop.id));
-  const rows = [];
-  for (const table of ["materials", "jobs", "leftovers"]) {
-    const { data } = await admin.from(table).select("*").in("workshop_id", others.map((w) => w.id)).order("id");
-    rows.push(data);
-  }
-  return JSON.stringify([others, rows]);
-}
-
-async function removeTestData() {
-  for (const id of created.workshops) {
-    await admin.from("pieces").delete().eq("workshop_id", id);
-    await admin.from("leftovers").delete().eq("workshop_id", id);
-    await admin.from("jobs").delete().eq("workshop_id", id);
-    await admin.from("timber_lengths").delete().eq("workshop_id", id);
-    await admin.from("materials").delete().eq("workshop_id", id);
-    await admin.from("workshops").delete().eq("id", id);
-  }
-  for (const id of created.users) {
-    await admin.auth.admin.deleteUser(id);
-  }
-}
-
 // The wardrobe from the walk-through. Three sheets is proven by hand: the sides
 // share one sheet, the doors another, and the tops and shelves a third.
 const PLY = "Plywood 18 mm";
@@ -352,11 +114,25 @@ const WARDROBE = [
   { name: "Shelf", material: PLY, length: 864, width: 540, quantity: 3 },
   { name: "Base rail", material: TIMBER, length: 900, quantity: 4 },
 ];
+// The client's console sketch, in cm as written: length × width – quantity, then
+// how many long and short sides are banded. A left mark is always the longer
+// side, so 26.4 × 35 bands a 35 edge. 27.41 m was worked out by hand.
+const CONSOLE_BOARD = "Board 18 mm";
+const CONSOLE = [
+  { length: "210", width: "35", quantity: 1, lengths: 1, widths: 0 },
+  { length: "206.4", width: "10", quantity: 4, lengths: 1, widths: 0 },
+  { length: "26.4", width: "35", quantity: 4, lengths: 1, widths: 0 },
+  { length: "28.2", width: "38", quantity: 2, lengths: 1, widths: 0 },
+  { length: "213.6", width: "38", quantity: 1, lengths: 1, widths: 2 },
+  { length: "70", width: "12", quantity: 6, lengths: 1, widths: 0 },
+  { length: "30", width: "12", quantity: 6, lengths: 1, widths: 0 },
+  { length: "70", width: "30", quantity: 3, lengths: 2, widths: 2 },
+];
+const CONSOLE_BANDING = "27.41 m";
 const WARDROBE_TOTAL = "GH¢ 1,430.00"; // 3 × 450 + 1 × 80
 const WARDROBE_PART_USED = "GH¢ 1,147.26"; // wood in the pieces, plus 10%
 
-rmSync(OUTPUT, { recursive: true, force: true });
-mkdirSync(OUTPUT, { recursive: true });
+prepareOutput("e2e/output/week");
 
 const before = await snapshotOtherWorkshops();
 const browser = await chromium.launch();
@@ -370,6 +146,7 @@ let shelfJobUrl;
 let savedPlan;
 let storedBefore = [];
 let keptCopyId;
+let consoleUrl;
 let worker;
 let phone;
 
@@ -430,6 +207,10 @@ try {
     checkEqual("a bad price is refused and the form keeps its typing", await boardForm.locator("input[name=name]").inputValue(), PLY);
 
     await boardForm.locator("input[name=price]").fill("450");
+    checkEqual("a new board starts as the client's 8 × 4 (242 × 121 cm)", await boardForm.locator("select[name=size] option:checked").innerText(), "8 × 4 ft (242 × 121 cm)");
+    await boardForm.locator("select[name=size]").selectOption("other");
+    await boardForm.locator("input[name=length]").fill(String(SHEET.length));
+    await boardForm.locator("input[name=width]").fill(String(SHEET.width));
     await submit(boardForm, "Add board");
     await laptop.locator("summary", { hasText: PLY }).waitFor();
     check("plywood is saved at GH¢ 450", (await laptop.locator("summary", { hasText: PLY }).innerText()).includes("GH¢ 450.00"));
@@ -489,7 +270,7 @@ try {
     await laptop.waitForURL("**/plan");
     await laptop.locator("svg[role=img]").first().waitFor();
     const plan = collapse(await main(laptop));
-    check("it plans 3 sheets, the proven minimum", plan.includes("3 sheets to buy"), plan.slice(0, 160));
+    check("it plans 3 sheets, the proven minimum", plan.includes("3 boards to buy"), plan.slice(0, 160));
     check("it buys one 12 ft plank for the rails", plan.includes("1 plank to buy"));
     check(`the cost is ${WARDROBE_TOTAL}`, plan.includes(WARDROBE_TOTAL));
     check("every sheet has a drawing", (await laptop.getByRole("heading", { name: /^Board \d/ }).count()) === 3);
@@ -504,11 +285,11 @@ try {
     await addPiece(laptop, { name: "Extra shelf", material: PLY, length: "864", width: "540", quantity: 4 });
     await waitForPiece(laptop, 4, "Extra shelf");
     const bigger = await openPlan(laptop, jobUrl);
-    check("adding 4 shelves needs a 4th sheet and changes the cost", bigger.includes("4 sheets to buy") && bigger.includes("GH¢ 1,880.00"), bigger.slice(0, 120));
+    check("adding 4 shelves needs a 4th sheet and changes the cost", bigger.includes("4 boards to buy") && bigger.includes("GH¢ 1,880.00"), bigger.slice(0, 120));
     await laptop.goto(jobUrl);
     await removePiece(laptop, "Extra shelf");
     const back = await openPlan(laptop, jobUrl);
-    check("removing them returns to the original plan", back.includes("3 sheets to buy") && back.includes(WARDROBE_TOTAL));
+    check("removing them returns to the original plan", back.includes("3 boards to buy") && back.includes(WARDROBE_TOTAL));
 
     await laptop.goto(jobUrl);
     const pricing = form(laptop, "Save");
@@ -620,7 +401,7 @@ try {
     await addPiece(laptop, { name: "Long shelf", material: PLY, length: "1900", width: "200" });
     await waitForPiece(laptop, 1, "Long shelf");
     const plan = await openPlan(laptop, shelfJobUrl);
-    check("it uses the leftover instead of a new sheet", plan.includes("0 sheets to buy") && plan.includes("From your leftover store"), plan.slice(0, 160));
+    check("it uses the leftover instead of a new sheet", plan.includes("0 boards to buy") && plan.includes("From your leftover store"), plan.slice(0, 160));
 
     await accept(laptop);
     await laptop.goto(`${BASE}/leftovers`);
@@ -806,6 +587,90 @@ try {
     await otherTab.close();
   });
 
+  await section("A console in centimetres, with every banded edge counted", async () => {
+    await laptop.goto(`${BASE}/setup`);
+    const sawForm = form(laptop, "Save");
+    await sawForm.locator("select[name=unit]").selectOption("cm");
+    await submit(sawForm, "Save");
+    await waitForUnit("cm");
+    await laptop.reload();
+    checkEqual("the workshop can work in centimetres", await laptop.inputValue("select[name=unit]"), "cm");
+
+    await laptop.getByText("Add a board", { exact: true }).click();
+    const boardForm = form(laptop, "Add board");
+    await boardForm.locator("input[name=name]").fill(CONSOLE_BOARD);
+    await boardForm.locator("input[name=thickness]").fill("18");
+    await boardForm.locator("input[name=price]").fill("400");
+    await submit(boardForm, "Add board");
+    await laptop.locator("summary", { hasText: CONSOLE_BOARD }).waitFor();
+    check("the client's 8 × 4 board is saved as 242 × 121 cm", (await laptop.locator("summary", { hasText: CONSOLE_BOARD }).innerText()).includes("242 × 121 cm"));
+
+    consoleUrl = await newJob(laptop, "Console", "Mr Boateng");
+    const pieceForm = form(laptop, "Add piece");
+    checkEqual("the board is chosen first", await pieceForm.locator("select").first().getAttribute("name"), "materialId");
+    await pieceForm.locator("select[name=materialId]").selectOption({ label: CONSOLE_BOARD });
+
+    for (const [index, row] of CONSOLE.entries()) {
+      await pieceForm.locator("input[name=length]").fill(row.length);
+      await pieceForm.locator("input[name=width]").fill(row.width);
+      await pieceForm.locator("input[name=quantity]").fill(String(row.quantity));
+      if (row.lengths === 2 && row.widths === 2) {
+        await pieceForm.getByRole("button", { name: "All 4 edges" }).click();
+      } else {
+        if (row.lengths >= 1) await pieceForm.getByRole("button", { name: "Left edge (long side)" }).click();
+        if (row.lengths === 2) await pieceForm.getByRole("button", { name: "Right edge (long side)" }).click();
+        if (row.widths >= 1) await pieceForm.getByRole("button", { name: "Top edge (short side)" }).click();
+        if (row.widths === 2) await pieceForm.getByRole("button", { name: "Bottom edge (short side)" }).click();
+      }
+      if (index === 4) {
+        const typing = collapse(await pieceForm.locator("fieldset").innerText());
+        check("the part being typed shows its own banding", typing.includes("2.90 m of banding"), typing);
+      }
+      await submit(pieceForm, "Add piece");
+      await waitForPiece(laptop, row.quantity, `Part ${index + 1}`);
+      if (index === 0) {
+        checkEqual("the board stays chosen for the next part", await pieceForm.locator("select[name=materialId] option:checked").innerText(), CONSOLE_BOARD);
+        checkEqual("the edges start blank for the next part", await pieceForm.getByRole("button", { pressed: true }).count(), 0);
+        check("totals appear as soon as the first part is in", (await laptop.getByRole("region", { name: "Totals so far" }).innerText()).includes("2.10 m"));
+      }
+    }
+    check("a part needs no name: unnamed parts are numbered", true);
+
+    const totals = collapse(await laptop.getByRole("region", { name: "Totals so far" }).innerText());
+    check(`the live total shows ${CONSOLE_BANDING} of banding`, totals.includes(`${CONSOLE_BANDING} edge banding`), totals);
+    check("the live total counts all 27 parts", totals.includes("27 parts"), totals);
+    const topRow = collapse(await laptop.locator("li", { hasText: "1 × Part 5" }).innerText());
+    check("the console top lists 1 long and 2 short sides", topRow.includes("213.6 × 38 cm") && topRow.includes("Banding: 1 long + 2 short · 2.90 m"), topRow);
+    const shortFirst = collapse(await laptop.locator("li", { hasText: "4 × Part 3" }).innerText());
+    check("26.4 × 35 with a left mark bands the 35 cm side", shortFirst.includes("Banding: 1 long · 1.40 m"), shortFirst);
+    const allRound = collapse(await laptop.locator("li", { hasText: "3 × Part 8" }).innerText());
+    check("the 70 × 30 parts are banded all round", allRound.includes("all 4 edges · 6.00 m"), allRound);
+    const liveBoards = totals.match(/^(\d+) boards?/)?.[1];
+    await laptop.screenshot({ path: `${OUTPUT}/8-console-job.png`, fullPage: true });
+
+    const plan = await openPlan(laptop, consoleUrl);
+    check(`the plan shows ${CONSOLE_BANDING} of edge banding`, plan.includes(`${CONSOLE_BANDING} edge banding`), plan.slice(0, 300));
+    check("the live board count matches the plan", plan.includes(`${liveBoards} ${liveBoards === "1" ? "board" : "boards"} to buy`), `${liveBoards} vs ${plan.slice(0, 200)}`);
+    check("sizes show in centimetres", plan.includes("242 × 121 cm"));
+    check("the console needs 2 boards of 121 × 242 cm", plan.includes("2 boards to buy"), plan.slice(0, 200));
+    checkEqual("the diagrams mark the banded edges", (await laptop.getByText("Edge banding", { exact: true }).count()) > 0, true);
+    await laptop.screenshot({ path: `${OUTPUT}/9-console-plan.png`, fullPage: true });
+
+    await submit(laptop.locator("form", { has: laptop.getByRole("button", { name: "Yes: accept this plan" }) }), "Yes: accept this plan");
+    await laptop.waitForURL("**/cut-sheet");
+    await laptop.getByRole("heading", { name: "Cut sheet" }).waitFor();
+    const sheet = collapse(await main(laptop));
+    check("the cut sheet tells the workers how much banding", sheet.includes(`Edge banding: ${CONSOLE_BANDING} for ${CONSOLE_BOARD}`), sheet.slice(0, 300));
+    const topLine = collapse(await laptop.locator("tbody tr", { hasText: "Part 5" }).innerText());
+    check("the cut sheet says which edges of each part to band", topLine.endsWith("1 long + 2 short"), topLine);
+    await laptop.screenshot({ path: `${OUTPUT}/10-console-cut-sheet.png`, fullPage: true });
+
+    await laptop.goto(`${BASE}/setup`);
+    await form(laptop, "Save").locator("select[name=unit]").selectOption("mm");
+    await submit(form(laptop, "Save"), "Save");
+    await waitForUnit("mm");
+  });
+
   await section("A worker joins, on his phone at the saw", async () => {
     await laptop.goto(`${BASE}/account`);
     const addForm = form(laptop, "Add to team");
@@ -859,6 +724,8 @@ try {
       },
       { label: "a new job", path: "/jobs/new" },
       { label: "a draft job", path: `/jobs/${keptCopyId}` },
+      { label: "a job with edge banding", path: new URL(consoleUrl).pathname },
+      { label: "a cut sheet with edge banding", path: `${new URL(consoleUrl).pathname}/cut-sheet` },
       { label: "a plan waiting to be accepted", path: `/jobs/${keptCopyId}/plan` },
       { label: "the wardrobe plan", path: `${new URL(jobUrl).pathname}/plan` },
       { label: "the cut sheet", path: `${new URL(jobUrl).pathname}/cut-sheet` },
@@ -975,19 +842,5 @@ try {
     check("no browser errors on any screen", pageErrors.length === 0, [...new Set(pageErrors)].map((text) => text.slice(0, 220)).slice(0, 6).join("\n      "));
   });
 } finally {
-  await browser.close();
-  stopServer();
-  const realWorkshopsUntouched = before === (await snapshotOtherWorkshops());
-  await removeTestData();
-  console.log("\nCleaning up");
-  check("the real workshops were not touched", realWorkshopsUntouched);
-  const { data: leftOver } = await admin.from("workshops").select("id").like("name", `${WORKSHOP}%`);
-  checkEqual("the test left nothing behind", leftOver.length, 0);
-
-  const failed = results.filter((result) => !result.passed);
-  console.log(`\n${results.length - failed.length} of ${results.length} checks passed`);
-  for (const result of failed) {
-    console.log(`  FAILED: ${result.name}  ${result.detail}`);
-  }
-  process.exitCode = failed.length > 0 ? 1 : 0;
+  await finish(browser, before);
 }
