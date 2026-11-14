@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/lib/action-result";
-import { getWorkshop } from "@/lib/data";
+import { getMaterials, getWorkshop } from "@/lib/data";
+import { suggestBandingColour } from "@/lib/planner/banding";
 import {
   DEFAULT_EDGE_TRIM_MM,
   DEFAULT_MIN_LEFTOVER_AREA_MM2,
@@ -13,7 +14,7 @@ import {
   STANDARD_SHEET,
 } from "@/lib/defaults";
 import { createClient } from "@/lib/supabase/server";
-import type { BoardType } from "@/lib/types";
+import type { Board, BoardType } from "@/lib/types";
 import { parseLength, parseMoney } from "@/lib/units";
 
 function text(data: FormData, name: string) {
@@ -66,6 +67,10 @@ export async function saveBoard(_state: ActionResult, data: FormData): Promise<A
   }
   if (trim * 2 >= Math.min(lengthMm, widthMm)) return { error: "That edge trim is bigger than the sheet." };
 
+  // Left blank, the tape is the one a matching board already uses, or else the board's own name.
+  const others = (await getMaterials()).filter((m): m is Board => m.kind === "board" && m.id !== id);
+  const bandingColour = text(data, "bandingColour") || suggestBandingColour(text(data, "name"), others) || text(data, "name");
+
   const row = {
     workshop_id: workshop.id,
     kind: "board",
@@ -78,6 +83,8 @@ export async function saveBoard(_state: ActionResult, data: FormData): Promise<A
     edge_trim_mm: trim,
     min_leftover_short_side_mm: shortSide,
     min_leftover_area_mm2: area,
+    banding_colour: bandingColour,
+    no_banding: data.get("noBanding") === "on",
   };
 
   const supabase = await createClient();

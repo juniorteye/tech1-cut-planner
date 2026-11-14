@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Board, Leftover, Piece, Timber } from "../types";
-import { describeEdges, jobBanding, pieceBandingMm } from "./banding.ts";
+import { bandingByColour, describeEdges, jobBanding, pieceBandingMm, suggestBandingColour } from "./banding.ts";
 import { isGuillotine, packBoards, type BoardPackInput } from "./boards.ts";
 import { packPlanks } from "./planks.ts";
 import { planJob } from "./plan-job.ts";
@@ -240,6 +240,7 @@ const record = { workshopId: "w" };
 const ply: Board = {
   ...record, id: "ply", kind: "board", name: "Ply 18", boardType: "plywood", lengthMm: 2440, widthMm: 1220,
   thicknessMm: 18, pricePerSheet: 45000, edgeTrimMm: 0, minLeftoverShortSideMm: 100, minLeftoverAreaMm2: 90000,
+  bandingColour: "Ply 18", noBanding: false,
 };
 const twoByFour: Timber = {
   ...record, id: "t", kind: "timber", name: "2 × 4", minLeftoverLengthMm: 300,
@@ -315,11 +316,11 @@ test("banding: a long mark bands the longer side, whichever size was typed first
 test("banding: the console sketch comes to 27.41 m, with no edge missed", () => {
   const [line] = jobBanding(consolePieces(), [ply, twoByFour]);
   assert.equal(Math.round(line.mm), 27412);
-  assert.equal(line.materialName, "Ply 18");
+  assert.equal(line.colour, "Ply 18");
 });
 
 test("banding: timber never counts, and each board material is totalled apart", () => {
-  const mel: Board = { ...ply, id: "mel", name: "Melamine 16" };
+  const mel: Board = { ...ply, id: "mel", name: "Melamine 16", bandingColour: "Melamine 16" };
   const lines = jobBanding(
     [
       piece({ bandedLengths: 2, quantity: 1 }),
@@ -328,7 +329,64 @@ test("banding: timber never counts, and each board material is totalled apart", 
     ],
     [ply, mel, twoByFour],
   );
-  assert.deepEqual(lines.map((l) => [l.materialName, l.mm]), [["Ply 18", 1440], ["Melamine 16", 1680]]);
+  assert.deepEqual(lines.map((l) => [l.colour, l.mm]), [["Ply 18", 1440], ["Melamine 16", 1680]]);
+});
+
+test("banding colours: boards sharing a tape colour share one total", () => {
+  const grey48: Board = { ...ply, id: "g48", name: "D-Grey 8×4", bandingColour: "D-Grey" };
+  const grey97: Board = { ...ply, id: "g97", name: "D-Grey 9×7", bandingColour: "d-grey ", lengthMm: 2720, widthMm: 2120 };
+  const satiya: Board = { ...ply, id: "sat", name: "Satiya", bandingColour: "Satiya" };
+  const lines = jobBanding(
+    [
+      piece({ materialId: "g48", lengthMm: 2100, widthMm: 350, bandedLengths: 1, quantity: 7 }),
+      piece({ id: "x", materialId: "g97", lengthMm: 2600, widthMm: 350, bandedLengths: 1, quantity: 6 }),
+      piece({ id: "y", materialId: "sat", lengthMm: 1500, widthMm: 700, bandedLengths: 1, quantity: 2 }),
+    ],
+    [grey48, grey97, satiya],
+  );
+  // 7 × 2.10 m + 6 × 2.60 m = 30.30 m of D-Grey; 2 × 1.50 m of Satiya.
+  assert.deepEqual(lines.map((l) => [l.colour, l.mm]), [["D-Grey", 30300], ["Satiya", 3000]]);
+});
+
+test("back panels: a no-banding board counts 0 m, even with old marks, and draws no banded edges", () => {
+  const back: Board = { ...ply, id: "back", name: "B-Panel 6 mm", thicknessMm: 6, bandingColour: "B-Panel 6 mm", noBanding: true };
+  const pieces = [
+    piece({ materialId: "back", lengthMm: 1000, widthMm: 800, bandedLengths: 2, bandedWidths: 2, quantity: 2 }),
+    piece({ id: "s", lengthMm: 700, widthMm: 300, bandedLengths: 1, quantity: 1 }),
+  ];
+  assert.deepEqual(jobBanding(pieces, [ply, back]).map((l) => [l.colour, l.mm]), [["Ply 18", 700]]);
+  const plan = planJob({ pieces, materials: [ply, back], leftovers: [], kerfMm: 3 });
+  const panels = plan.boards.filter((b) => b.materialId === "back").flatMap((b) => b.placements);
+  assert.equal(panels.length, 2);
+  assert.ok(panels.every((p) => p.bandedLengths === 0 && p.bandedWidths === 0));
+  assert.deepEqual(plan.banding, [{ colour: "Ply 18", mm: 700 }]);
+});
+
+test("banding colours: plans saved before colours still read, one line per board name", () => {
+  assert.deepEqual(bandingByColour([{ materialName: "Ply 18", mm: 1000 }, { materialName: "ply 18", mm: 500 }, { colour: "Satiya", mm: 200 }]), [
+    { colour: "Ply 18", mm: 1500 },
+    { colour: "Satiya", mm: 200 },
+  ]);
+  assert.deepEqual(bandingByColour(undefined), []);
+});
+
+test("banding colours: a new board takes the tape of the same board in another size", () => {
+  const existing = [
+    { name: "D-Grey 18 mm 8×4", bandingColour: "D-Grey 18 mm 8×4", noBanding: false },
+    { name: "Satiya", bandingColour: "Satiya tape", noBanding: false },
+    { name: "Miniyator 18 mm", bandingColour: "Miniyator", noBanding: false },
+    { name: "Back panel 6 mm", bandingColour: "Back panel 6 mm", noBanding: true },
+  ];
+  assert.equal(suggestBandingColour("D-Grey 18 mm 9 x 7", existing), "D-Grey 18 mm 8×4");
+  assert.equal(suggestBandingColour("d-grey 18 mm 272 × 212 cm", existing), "D-Grey 18 mm 8×4");
+  assert.equal(suggestBandingColour("Satiya", existing), "Satiya tape");
+  assert.equal(suggestBandingColour("Miniyator 18 mm 9×7", existing), "Miniyator");
+  assert.equal(suggestBandingColour("Miniyator 9×7", existing), "Miniyator");
+  // Thickness sets the tape width, so a 25 mm board is not matched to 18 mm tape.
+  assert.equal(suggestBandingColour("D-Grey 25 mm 8×4", existing), null);
+  assert.equal(suggestBandingColour("Back panel 6 mm 9×7", existing), null);
+  assert.equal(suggestBandingColour("Oak", existing), null);
+  assert.equal(suggestBandingColour("  ", existing), null);
 });
 
 const board4x8: Board = { ...ply, id: "b48", name: "Board 4×8", lengthMm: 2420, widthMm: 1210 };

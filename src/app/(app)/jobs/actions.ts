@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { takesBanding } from "@/lib/planner/banding";
 import { redirect } from "next/navigation";
 import type { ActionResult } from "@/lib/action-result";
 import { getJob, getLeftovers, getMaterials, getPieces, getWorkshop } from "@/lib/data";
@@ -131,6 +132,7 @@ export async function addPiece(_state: ActionResult, data: FormData): Promise<Ac
   // A name is optional: the sketch only has sizes, so an unnamed part is numbered by its line.
   const { count } = await supabase.from("pieces").select("id", { count: "exact", head: true }).eq("job_id", jobId);
   const isBoard = material.kind === "board";
+  const banded = takesBanding(material);
   const { error } = await supabase.from("pieces").insert({
     workshop_id: workshop.id,
     job_id: jobId,
@@ -140,8 +142,8 @@ export async function addPiece(_state: ActionResult, data: FormData): Promise<Ac
     width_mm: isBoard ? widthMm : null,
     quantity,
     grain_locked: data.get("grainLocked") === "on",
-    banded_lengths: isBoard ? bandedLengths : 0,
-    banded_widths: isBoard ? bandedWidths : 0,
+    banded_lengths: banded ? bandedLengths : 0,
+    banded_widths: banded ? bandedWidths : 0,
   });
 
   if (error) return { error: "Could not add the piece." };

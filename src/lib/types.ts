@@ -40,6 +40,10 @@ export type Board = WorkshopRecord & {
   edgeTrimMm: Mm;
   minLeftoverShortSideMm: Mm;
   minLeftoverAreaMm2: number;
+  /** The edge tape this board takes. Boards with the same colour share one banding total. */
+  bandingColour: string;
+  /** Back panels and other thin boards: no edges are ever banded. */
+  noBanding: boolean;
 };
 
 export type TimberLength = {

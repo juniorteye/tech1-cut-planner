@@ -220,6 +220,7 @@ try {
     await laptop.getByText("Add a board", { exact: true }).click();
     const large = form(laptop, "Add board");
     await large.locator("input[name=name]").fill(LARGE);
+    checkEqual("the 9 × 7 offers the 4 × 8's tape, since only the size differs", await large.locator("input[name=bandingColour]").inputValue(), SMALL);
     await large.locator("select[name=size]").selectOption("large");
     await large.locator("input[name=thickness]").fill("18");
     await large.locator("input[name=price]").fill("700");
@@ -590,6 +591,100 @@ try {
     checkEqual("with no banding column it never had", await laptop.getByRole("columnheader", { name: "Band" }).count(), 0);
     await openPlan(laptop, `${BASE}/jobs/${job.id}`);
     check("its plan opens too", true);
+
+    // Plans saved before colours kept one banding line per board, named after the board.
+    const perBoard = structuredClone(saved.plan);
+    perBoard.banding = [{ materialId: "old", materialName: SMALL, mm: 27412 }];
+    const { data: colourless } = await admin.from("jobs").insert({ workshop_id: workshopId, name: "Console before colours", status: "accepted" }).select("id").single();
+    await admin.from("pieces").insert(pieces.map((piece) => ({ ...piece, workshop_id: workshopId, job_id: colourless.id })));
+    await admin.from("plans").insert({ job_id: colourless.id, workshop_id: workshopId, plan: perBoard });
+    await laptop.goto(`${BASE}/jobs/${colourless.id}/cut-sheet`);
+    await laptop.getByText("Numbered list").waitFor();
+    const sheet = collapse(await main(laptop));
+    check("a plan saved before colours still gives its banding on the cut sheet", sheet.includes(`Edge banding: ${BANDING} for ${SMALL}`), sheet.slice(0, 300));
+  });
+
+  await section("Kitchen boards: tape by colour, and back panels with no banding", async () => {
+    const GREY = "D-Grey 18 mm 8×4";
+    const GREY_LARGE = "D-Grey 18 mm 9×7";
+    const SATIYA = "Satiya 18 mm";
+    const BACK = "B-Panel 6 mm";
+    const addBoard = async ({ name, size = "standard", thickness = "18", colour, noBanding = false }) => {
+      await laptop.goto(`${BASE}/setup`);
+      await laptop.getByText("Add a board", { exact: true }).click();
+      const boardForm = form(laptop, "Add board");
+      await boardForm.locator("input[name=name]").fill(name);
+      await boardForm.locator("select[name=size]").selectOption(size);
+      await boardForm.locator("input[name=thickness]").fill(thickness);
+      await boardForm.locator("input[name=price]").fill("500");
+      if (noBanding) await boardForm.getByLabel("No edge banding (back panels)").check();
+      const offered = noBanding ? null : await boardForm.locator("input[name=bandingColour]").inputValue();
+      if (colour) await boardForm.locator("input[name=bandingColour]").fill(colour);
+      await submit(boardForm, "Add board");
+      await laptop.locator("summary", { hasText: name }).waitFor();
+      return { offered };
+    };
+
+    const first = await addBoard({ name: GREY });
+    checkEqual("a board unlike any other offers no tape colour", first.offered, "");
+    const second = await addBoard({ name: GREY_LARGE, size: "large" });
+    checkEqual("the D-Grey 9 × 7 offers the D-Grey 8 × 4's tape", second.offered, GREY);
+    await addBoard({ name: SATIYA, colour: "Satiya" });
+    await laptop.goto(`${BASE}/setup`);
+    await laptop.getByText("Add a board", { exact: true }).click();
+    const backForm = form(laptop, "Add board");
+    await backForm.getByLabel("No edge banding (back panels)").check();
+    checkEqual("ticking no banding hides the colour box", await backForm.locator("input[name=bandingColour]").count(), 0);
+    await addBoard({ name: BACK, thickness: "6", noBanding: true });
+
+    const summary = async (name) => collapse(await laptop.locator("summary", { hasText: name }).innerText());
+    check("Setup says which tape the 9 × 7 takes", (await summary(GREY_LARGE)).includes(`${GREY} tape`), await summary(GREY_LARGE));
+    check("Setup says the back panel takes no banding", (await summary(BACK)).includes("no banding"), await summary(BACK));
+    const { data: rows } = await admin.from("materials").select("name, banding_colour, no_banding, thickness_mm").eq("workshop_id", created.workshops[0]).eq("kind", "board");
+    const row = (name) => rows.find((r) => r.name === name);
+    checkEqual("a blank colour is saved as the board's own name", row(GREY).banding_colour, GREY);
+    checkEqual("both D-Greys are saved with one tape", row(GREY_LARGE).banding_colour, GREY);
+    checkEqual("a typed colour is kept", row(SATIYA).banding_colour, "Satiya");
+    check("the back panel is saved 6 mm with no banding", row(BACK).no_banding === true && Number(row(BACK).thickness_mm) === 6);
+
+    const kitchenUrl = await newJob(laptop, "Kitchen", "Tech1 test");
+    const pieceForm = form(laptop, "Add piece");
+    const add = async (board, part, edges) => {
+      await pieceForm.locator("select[name=materialId]").selectOption({ label: board });
+      await typePart(pieceForm, part);
+      if (edges) await markEdges(pieceForm, edges);
+      await submit(pieceForm, "Add piece");
+      await waitForPiece(laptop, part.quantity, part.name);
+    };
+    // Typed as he writes them, width first: 35 × 210 – 7 with the long side banded.
+    await pieceForm.locator("input[name=name]").fill("Side");
+    await add(GREY, { length: "35", width: "210", quantity: 7, name: "Side" }, { long: 1, short: 0 });
+    await pieceForm.locator("input[name=name]").fill("Tall side");
+    await add(GREY_LARGE, { length: "35", width: "260", quantity: 6, name: "Tall side" }, { long: 1, short: 0 });
+    await pieceForm.locator("input[name=name]").fill("Door");
+    await add(SATIYA, { length: "70", width: "150", quantity: 2, name: "Door" }, { long: 1, short: 0 });
+
+    await pieceForm.locator("select[name=materialId]").selectOption({ label: BACK });
+    checkEqual("a back panel hides the edge rectangle", await pieceForm.locator("fieldset").count(), 0);
+    check("and says why", (await pieceForm.innerText()).includes(`${BACK} takes no edge banding`));
+    await pieceForm.locator("input[name=name]").fill("Back");
+    await add(BACK, { length: "80", width: "100", quantity: 2, name: "Back" });
+
+    const totals = await readTotals(laptop);
+    // 7 × 2.10 m + 6 × 2.60 m = 30.30 m of D-Grey tape; 2 × 1.50 m of Satiya.
+    check("the totals give 30.30 m of D-Grey tape, both sizes together", totals.text.includes(`30.30 m edge banding · ${GREY}`), totals.text);
+    check("and 3.00 m of Satiya tape apart", totals.text.includes("3.00 m edge banding · Satiya"), totals.text);
+    check("never one combined figure", !totals.text.includes("33.30"), totals.text);
+    const back = collapse(await laptop.locator("li", { hasText: "× Back" }).innerText());
+    check("the back panel row shows no banding line", !back.includes("Banding"), back);
+    const { data: saved } = await admin.from("pieces").select("banded_lengths, banded_widths").eq("job_id", kitchenUrl.split("/").pop()).eq("name", "Back").single();
+    check("and is saved with no banded edges", saved.banded_lengths === 0 && saved.banded_widths === 0);
+
+    const plan = await openPlan(laptop, kitchenUrl);
+    check("the plan gives D-Grey tape on its own", plan.includes(`30.30 m edge banding · ${GREY}`), plan.slice(0, 400));
+    check("and Satiya tape on its own", plan.includes("3.00 m edge banding · Satiya"), plan.slice(0, 400));
+    check("the back panels are still planned", plan.includes(BACK));
+    await laptop.screenshot({ path: `${OUTPUT}/4-kitchen-colours-plan.png`, fullPage: true });
   });
 
   await section("Nothing went wrong behind the scenes", async () => {

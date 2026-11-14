@@ -49,7 +49,9 @@ export function PieceFields({
     return () => form.removeEventListener("reset", onReset);
   }, []);
 
-  const isTimber = materials.find((material) => material.id === materialId)?.kind === "timber";
+  const chosen = materials.find((material) => material.id === materialId);
+  const isTimber = chosen?.kind === "timber";
+  const noBanding = chosen?.kind === "board" && chosen.noBanding;
   const hasTimber = materials.some((material) => material.kind === "timber");
   const hint = HINTS[unit];
   const lengthMm = parseLength(length, unit);
@@ -112,7 +114,10 @@ export function PieceFields({
           />
         </div>
       </div>
-      {!isTimber && (
+      {noBanding && (
+        <p className="text-sm text-muted sm:col-span-2">{chosen.name} takes no edge banding.</p>
+      )}
+      {!isTimber && !noBanding && (
         <EdgePicker
           edges={edges}
           onChange={setEdges}

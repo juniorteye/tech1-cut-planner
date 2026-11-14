@@ -1,5 +1,5 @@
 import type { Mm, Pesewas } from "../types";
-import type { BandingLine } from "./banding";
+import type { SavedBandingLine } from "./banding";
 
 export type Rect = {
   x: Mm;
@@ -117,6 +117,6 @@ export type JobPlan = {
   plankWastePercent: number | null;
   buyCost: Pesewas;
   leftoverCost: Pesewas;
-  /** Missing on plans saved before banding was added. */
-  banding?: BandingLine[];
+  /** One line per tape colour. Missing on plans saved before banding; per board on plans saved before colours. */
+  banding?: SavedBandingLine[];
 };

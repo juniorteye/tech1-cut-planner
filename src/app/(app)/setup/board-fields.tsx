@@ -4,29 +4,51 @@ import { useEffect, useRef, useState } from "react";
 import { FormField } from "@/components/form-field";
 import { SelectField } from "@/components/select-field";
 import { LARGE_SHEET, STANDARD_SHEET } from "@/lib/defaults";
+import { suggestBandingColour } from "@/lib/planner/banding";
 import type { Board } from "@/lib/types";
 import { formatMoneyInput } from "./format";
 
-export function BoardFields({ board }: { board?: Board }) {
+export function BoardFields({ board, boards }: { board?: Board; boards: Board[] }) {
   const matches = (sheet: { lengthMm: number; widthMm: number }) =>
     board?.lengthMm === sheet.lengthMm && board?.widthMm === sheet.widthMm;
   const initial = !board || matches(STANDARD_SHEET) ? "standard" : matches(LARGE_SHEET) ? "large" : "other";
   const [size, setSize] = useState(initial);
+  const [name, setName] = useState(board?.name ?? "");
+  // Blank means "work it out": the tape a matching board uses, or else the board name.
+  const [colour, setColour] = useState(board?.bandingColour ?? "");
+  const [colourTyped, setColourTyped] = useState(Boolean(board));
+  const [noBanding, setNoBanding] = useState(board?.noBanding ?? false);
   const root = useRef<HTMLDivElement>(null);
+  const others = boards.filter((other) => other.id !== board?.id);
+  const suggested = suggestBandingColour(name, others);
+  const shownColour = colourTyped ? colour : (suggested ?? "");
 
   // A saved "Add board" form is cleared, so the size goes back to match it.
   // Otherwise "Other size" would stay picked with its boxes emptied.
   useEffect(() => {
     const form = root.current?.closest("form");
-    const onReset = () => setSize(initial);
+    const onReset = () => {
+      setSize(initial);
+      setName(board?.name ?? "");
+      setColour(board?.bandingColour ?? "");
+      setColourTyped(Boolean(board));
+      setNoBanding(board?.noBanding ?? false);
+    };
     form?.addEventListener("reset", onReset);
     return () => form?.removeEventListener("reset", onReset);
-  }, [initial]);
+  }, [initial, board]);
 
   return (
     <div ref={root} className="grid gap-3 sm:grid-cols-2">
       {board && <input type="hidden" name="id" value={board.id} />}
-      <FormField label="Name" name="name" defaultValue={board?.name} placeholder="Plywood 18 mm" required />
+      <FormField
+        label="Name"
+        name="name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        placeholder="Plywood 18 mm"
+        required
+      />
       <SelectField label="Type" name="boardType" defaultValue={board?.boardType ?? "plywood"}>
         <option value="plywood">Plywood</option>
         <option value="mdf">MDF</option>
@@ -53,6 +75,37 @@ export function BoardFields({ board }: { board?: Board }) {
         placeholder="450"
         required
       />
+      <div className="sm:col-span-2 grid gap-3 sm:grid-cols-2">
+        <label className="flex min-h-10 items-center gap-2 self-end">
+          <input
+            type="checkbox"
+            name="noBanding"
+            className="size-5"
+            checked={noBanding}
+            onChange={(event) => setNoBanding(event.target.checked)}
+          />
+          <span className="text-sm font-semibold">No edge banding (back panels)</span>
+        </label>
+        {!noBanding && (
+          <div>
+            <FormField
+              label="Banding colour"
+              name="bandingColour"
+              value={shownColour}
+              onChange={(event) => {
+                setColour(event.target.value);
+                setColourTyped(true);
+              }}
+              placeholder={name.trim() || "Same as the board name"}
+            />
+            <p className="mt-1 text-sm text-muted">
+              {!colourTyped && suggested
+                ? "Same tape as the board you already have. Boards with one colour share a banding total."
+                : "Boards with the same colour share one banding total."}
+            </p>
+          </div>
+        )}
+      </div>
       <FormField
         label="Edge trim per side (mm)"
         name="trim"

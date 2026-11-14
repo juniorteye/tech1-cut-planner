@@ -54,8 +54,9 @@ export function planJob({ pieces, materials, leftovers, kerfMm }: PlanJobInput):
         lengthMm: piece.lengthMm,
         widthMm: piece.widthMm ?? piece.lengthMm,
         grainLocked: piece.grainLocked,
-        bandedLengths: piece.bandedLengths,
-        bandedWidths: piece.bandedWidths,
+        // A no-banding board ignores marks left from before it was changed.
+        bandedLengths: material.noBanding ? 0 : piece.bandedLengths,
+        bandedWidths: material.noBanding ? 0 : piece.bandedWidths,
       }));
       const result = packBoards({
         pieces: planned,

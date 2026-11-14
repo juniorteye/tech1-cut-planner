@@ -8,7 +8,7 @@ import { SelectField } from "@/components/select-field";
 import { EdgeIcon } from "@/components/edge-icon";
 import { OffcutNote } from "@/components/offcut-note";
 import { getJob, getLeftovers, getMaterials, getPieces, getPlan, getWorkshop } from "@/lib/data";
-import { describeEdges, pieceBandingMm } from "@/lib/planner/banding";
+import { bandingByColour, describeEdges, pieceBandingMm, takesBanding } from "@/lib/planner/banding";
 import { planJob } from "@/lib/planner/plan-job";
 import type { JobPlan } from "@/lib/planner/types";
 import { formatMetres, formatSize } from "@/lib/units";
@@ -63,7 +63,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
           <ul className="divide-y divide-line">
             {pieces.map((piece) => (
               <li key={piece.id} className="flex items-center gap-3 py-2">
-                {material(piece.materialId)?.kind === "board" && <EdgeIcon {...piece} />}
+                {takesBanding(material(piece.materialId)) && <EdgeIcon {...piece} />}
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">
                     {piece.quantity} × {piece.name}
@@ -72,7 +72,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
                     {formatSize(piece.lengthMm, piece.widthMm, unit)} · {materialName(piece.materialId)}
                     {piece.grainLocked && " · grain locked"}
                   </p>
-                  {material(piece.materialId)?.kind === "board" && (
+                  {takesBanding(material(piece.materialId)) && (
                     <p className="text-sm text-muted">
                       Banding: {describeEdges(piece)}
                       {pieceBandingMm(piece) > 0 &&
@@ -144,8 +144,7 @@ function LiveTotals({ plan, jobId }: { plan: JobPlan; jobId: string }) {
   const sheets = plan.buy.filter((item) => item.widthMm !== null).reduce((sum, item) => sum + item.count, 0);
   const planks = plan.buy.filter((item) => item.widthMm === null).reduce((sum, item) => sum + item.count, 0);
   const fromStore = [...plan.boards, ...plan.planks].filter((stock) => stock.source === "leftover").length;
-  const banding = plan.banding ?? [];
-  const bandingMm = banding.reduce((sum, line) => sum + line.mm, 0);
+  const banding = bandingByColour(plan.banding);
   const boardNames = [...new Set(plan.buy.filter((item) => item.widthMm !== null).map((item) => item.name))];
 
   return (
@@ -165,17 +164,22 @@ function LiveTotals({ plan, jobId }: { plan: JobPlan; jobId: string }) {
             <span className="text-sm text-muted">{planks === 1 ? "plank to buy" : "planks to buy"}</span>
           </p>
         )}
-        <p>
-          <span className="font-display text-3xl font-bold">{formatMetres(bandingMm)}</span>{" "}
-          <span className="text-sm text-muted">edge banding</span>
-        </p>
+        {/* Tape is bought by colour, so each colour gets its own figure, never one combined number. */}
+        {(banding.length > 0 ? banding : [{ colour: "", mm: 0 }]).map((line) => (
+          <p key={line.colour}>
+            <span className="font-display text-3xl font-bold">{formatMetres(line.mm)}</span>{" "}
+            <span className="text-sm text-muted">
+              edge banding{banding.length > 1 && <span className="font-semibold text-ink"> · {line.colour}</span>}
+            </span>
+          </p>
+        ))}
         <p className="text-sm text-muted">
           {plan.pieceCount} {plan.pieceCount === 1 ? "part" : "parts"}
         </p>
       </div>
       <p className="text-sm text-muted">
         {boardNames.join(", ")}
-        {banding.length > 1 && ` · banding: ${banding.map((line) => `${line.materialName} ${formatMetres(line.mm)}`).join(", ")}`}
+        {banding.length === 1 && ` · ${banding[0].colour} tape`}
       </p>
       {fromStore > 0 && <OffcutNote count={fromStore} />}
       {plan.unplaced.length > 0 && (

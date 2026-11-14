@@ -4,6 +4,7 @@ import { ActionForm } from "@/components/action-form";
 import { ButtonLink } from "@/components/button-link";
 import { PlanBoards } from "@/components/plan-boards";
 import { getJob, getLeftovers, getMaterials, getPieces, getPlan, getWorkshop } from "@/lib/data";
+import { bandingByColour } from "@/lib/planner/banding";
 import { planJob } from "@/lib/planner/plan-job";
 import { quoteTotal } from "@/lib/planner/quote";
 import { formatMetres, formatMoney, formatSize } from "@/lib/units";
@@ -47,8 +48,7 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
   const sheets = plan.buy.filter((item) => item.widthMm !== null).reduce((sum, item) => sum + item.count, 0);
   const planks = plan.buy.filter((item) => item.widthMm === null).reduce((sum, item) => sum + item.count, 0);
   const fromStore = [...plan.boards, ...plan.planks].filter((stock) => stock.source === "leftover").length;
-  const banding = plan.banding ?? [];
-  const bandingMm = banding.reduce((sum, line) => sum + line.mm, 0);
+  const banding = bandingByColour(plan.banding);
 
   return (
     <div className="space-y-5">
@@ -70,7 +70,7 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
         </div>
       )}
 
-      <div className={`grid grid-cols-2 gap-4 ${bandingMm > 0 ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat value={String(sheets)} label={sheets === 1 ? "board to buy" : "boards to buy"} />
         {planks > 0 ? (
           <Stat value={String(planks)} label={planks === 1 ? "plank to buy" : "planks to buy"} />
@@ -78,14 +78,22 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
           <Stat value={String(plan.pieceCount)} label="pieces cut" />
         )}
         <Stat value={wasteLabel(plan.boardWastePercent ?? plan.plankWastePercent)} label="wood wasted" />
-        {bandingMm > 0 && <Stat value={formatMetres(bandingMm)} label="edge banding" />}
         {/* Full width on phones, so a large amount stays on one line. */}
         <Stat
           value={formatMoney(quoteTotal(plan, job))}
           label="material cost"
-          className={bandingMm > 0 ? "col-span-2" : "col-span-2 sm:col-span-1"}
+          className="col-span-2 sm:col-span-1"
         />
       </div>
+
+      {/* One figure per tape colour: he buys banding by colour. */}
+      {banding.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {banding.map((line) => (
+            <Stat key={line.colour} value={formatMetres(line.mm)} label={`edge banding · ${line.colour}`} />
+          ))}
+        </div>
+      )}
 
       {plan.buy.length > 0 && (
         <p className="text-sm text-muted">
@@ -97,12 +105,6 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
       )}
 
       {fromStore > 0 && <OffcutNote count={fromStore} />}
-
-      {banding.length > 1 && (
-        <p className="text-sm text-muted">
-          Banding: {banding.map((line) => `${line.materialName} ${formatMetres(line.mm)}`).join(", ")}
-        </p>
-      )}
 
       <PlanBoards plan={plan} unit={unit} />
 

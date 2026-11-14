@@ -40,12 +40,13 @@ export default async function SetupPage() {
                 <summary className="flex cursor-pointer flex-wrap justify-between gap-2">
                   <span className="font-semibold">{board.name}</span>
                   <span className="text-muted">
-                    {formatSize(board.lengthMm, board.widthMm, unit)} · {formatMoney(board.pricePerSheet)}
+                    {formatSize(board.lengthMm, board.widthMm, unit)} · {formatMoney(board.pricePerSheet)} ·{" "}
+                    {board.noBanding ? "no banding" : `${board.bandingColour} tape`}
                   </span>
                 </summary>
                 <div className="mt-3">
                   <ActionForm action={saveBoard} submitLabel="Save changes" pendingLabel="Saving…">
-                    <BoardFields board={board} />
+                    <BoardFields board={board} boards={boards} />
                   </ActionForm>
                   <ActionForm action={deleteMaterial} submitLabel="Remove" pendingLabel="Removing…" subtle className="mt-2">
                     <input type="hidden" name="id" value={board.id} />
@@ -58,7 +59,7 @@ export default async function SetupPage() {
         <details open={boards.length === 0} className="mt-3">
           <summary className="cursor-pointer font-semibold">Add a board</summary>
           <ActionForm action={saveBoard} submitLabel="Add board" pendingLabel="Adding…" resetOnSave className="mt-3">
-            <BoardFields />
+            <BoardFields boards={boards} />
           </ActionForm>
         </details>
       </Card>

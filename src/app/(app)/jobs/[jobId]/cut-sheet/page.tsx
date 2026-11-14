@@ -3,7 +3,7 @@ import { ButtonLink } from "@/components/button-link";
 import { PlanBoards } from "@/components/plan-boards";
 import { PrintButton } from "@/components/print-button";
 import { getJob, getPlan, getWorkshop } from "@/lib/data";
-import { describeEdges } from "@/lib/planner/banding";
+import { bandingByColour, describeEdges } from "@/lib/planner/banding";
 import { formatMetres, formatSize } from "@/lib/units";
 
 export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/cut-sheet">) {
@@ -38,7 +38,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
       })),
     ),
   ].sort((a, b) => a.number - b.number);
-  const banding = plan.banding ?? [];
+  const banding = bandingByColour(plan.banding);
   const showEdges = banding.length > 0;
 
   return (
@@ -64,7 +64,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
       {showEdges && (
         <p className="rounded-xl border border-line bg-card p-4">
           <span className="font-semibold">Edge banding: </span>
-          {banding.map((line) => `${formatMetres(line.mm)} for ${line.materialName}`).join(", ")}. Long means the
+          {banding.map((line) => `${formatMetres(line.mm)} for ${line.colour}`).join(", ")}. Long means the
           part&apos;s longer side, short its shorter side.
         </p>
       )}

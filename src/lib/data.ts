@@ -44,6 +44,8 @@ function toMaterial(row: Row): Material {
       edgeTrimMm: Number(row.edge_trim_mm),
       minLeftoverShortSideMm: Number(row.min_leftover_short_side_mm),
       minLeftoverAreaMm2: Number(row.min_leftover_area_mm2),
+      bandingColour: (row.banding_colour as string | null) ?? (row.name as string),
+      noBanding: row.no_banding === true,
     };
     return board;
   }
