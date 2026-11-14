@@ -11,7 +11,8 @@ export function LogOutButton() {
         navigator.serviceWorker?.controller?.postMessage({ type: "clear-saved-pages" });
       }}
     >
-      <button type="submit" className="min-h-10 px-3 py-1.5 text-sm font-semibold text-muted">
+      {/* Extensions may tag this button before React loads; see ActionForm. */}
+      <button type="submit" suppressHydrationWarning className="min-h-10 px-3 py-1.5 text-sm font-semibold text-muted">
         Log out
       </button>
     </form>

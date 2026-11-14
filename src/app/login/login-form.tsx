@@ -14,8 +14,10 @@ function LoginButtons() {
 
   return (
     <>
+      {/* Extensions may tag these buttons before React loads; see ActionForm. */}
       <button
         type="submit"
+        suppressHydrationWarning
         disabled={pending}
         className="flex w-full items-center justify-center gap-2 rounded-md bg-ruler px-4 py-2 font-semibold disabled:opacity-60"
       >
@@ -29,6 +31,7 @@ function LoginButtons() {
       </button>
       <button
         type="submit"
+        suppressHydrationWarning
         name="intent"
         value="forgot"
         formNoValidate

@@ -6,9 +6,11 @@ export type PastedLine =
   | { line: number; text: string; ok: false; reason: string };
 
 const NUMBER = String.raw`(\d+(?:[.,]\d+)?)`;
+// Words he writes for "pieces": pc, pcs, pic, pics, pr, prs, piece(s), no(s). Never part of a name.
+const PIECES = String.raw`(?:pcs?|pics?|prs?|pieces?|nos?)\.?`;
 // 35 x 260 - 6 pcs · 35x260-6 · 35 × 260 – 6 · 35*260 6pcs · 35 x 260 = 6 nos · 35 x 260 (qty 1) · 35 x 260 - 6 pcs side
 const LINE = new RegExp(
-  String.raw`^${NUMBER}\s*[x×X*]\s*${NUMBER}\s*(?:(?:[-–—=:]|\bx\b)?\s*${NUMBER}\s*(?:pcs?|pieces?|nos?|no\.?|x)?\.?)?\s*(.*)$`,
+  String.raw`^${NUMBER}\s*[x×X*]\s*${NUMBER}\s*(?:(?:[-–—=:]|\bx\b)?\s*${NUMBER}\s*(?:${PIECES}(?![a-z])|x\b)?)?\s*(.*)$`,
   "i",
 );
 
@@ -30,6 +32,13 @@ export function parsePastedList(text: string, unit: DisplayUnit): PastedLine[] {
     const quantity = qty === undefined ? 1 : Number(qty);
     if (widthMm === null || lengthMm === null) return [{ line, text: raw.trim(), ok: false, reason: "A size is not a number" }];
     if (!Number.isInteger(quantity) || quantity < 1) return [{ line, text: raw.trim(), ok: false, reason: "The quantity must be a whole number" }];
-    return [{ line, text: raw.trim(), ok: true, widthMm, lengthMm, quantity, name: rest.trim().replace(/^[-–—:]\s*/, "") }];
+    // "35 x 260 - pcs": the word alone, with no number, still means pieces, so it is not a name.
+    const name = rest
+      .trim()
+      .replace(/^[-–—=:]\s*/, "")
+      .replace(new RegExp(`^${PIECES}(?![a-z])`, "i"), "")
+      .trim()
+      .replace(/^[-–—:]\s*/, "");
+    return [{ line, text: raw.trim(), ok: true, widthMm, lengthMm, quantity, name }];
   });
 }

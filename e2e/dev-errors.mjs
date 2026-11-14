@@ -19,6 +19,13 @@ const user = await addLogin("dev-errors", newPassword());
 const browser = await chromium.launch();
 const page = await browser.newPage();
 page.setDefaultTimeout(90000);
+// Behave like the autofill and password extensions in the workshop's Chrome: they tag form
+// buttons the moment they appear, before React hydrates. The app must not warn about it.
+await page.addInitScript(() => {
+  new MutationObserver(() => {
+    for (const button of document.querySelectorAll("button[type=submit]:not([data-filler])")) button.setAttribute("data-filler", "1");
+  }).observe(document, { childList: true, subtree: true });
+});
 const logs = [];
 page.on("console", (m) => {
   // Dev-only chatter that is not a problem in the app.

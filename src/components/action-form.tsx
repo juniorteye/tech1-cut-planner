@@ -70,8 +70,10 @@ export function ActionForm({
       {!error && savedMessage && state.savedAt && (
         <p className="mt-2 text-sm font-semibold text-keep-ink">{savedMessage}</p>
       )}
+      {/* Autofill and password extensions tag form buttons before React loads; that is not a mismatch in the app. */}
       <button
         type="submit"
+        suppressHydrationWarning
         disabled={pending || disabled}
         className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold disabled:opacity-60 ${
           subtle ? "bg-transparent text-muted ring-1 ring-line" : "mt-3 bg-ruler text-ink"

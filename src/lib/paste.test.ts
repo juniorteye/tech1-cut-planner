@@ -34,3 +34,32 @@ test("paste: sizes follow the workshop's unit", () => {
   const [mm] = parsePastedList("350 x 2600 - 6", "mm");
   assert.ok(mm.ok && mm.widthMm === 350 && mm.lengthMm === 2600);
 });
+
+test("paste: pc, pcs, pic and pr mean pieces, with or without a number, and are never the name", () => {
+  const cases: [string, number, string][] = [
+    ["15.6 x 66.4 - 3 pic", 3, ""],
+    ["15.6 x 66.4 - 3pic", 3, ""],
+    ["15.6 x 66.4 - 3 pics", 3, ""],
+    ["35 x 260 - 6 pc", 6, ""],
+    ["35 x 260 - 6 PCS", 6, ""],
+    ["35 x 260 - 2 pr", 2, ""],
+    ["35 x 260 - 2 prs.", 2, ""],
+    ["35 x 260 - 6 pcs door", 6, "door"],
+    ["35 x 260 - 3 pic shelf", 3, "shelf"],
+    // The word alone, with no number before it: one piece, no name.
+    ["35 x 260 pcs", 1, ""],
+    ["35 x 260 - pic", 1, ""],
+    ["35 x 260 - pr", 1, ""],
+    ["35 x 260 pc door", 1, "door"],
+    // A real word that only starts the same way stays a name.
+    ["35 x 260 - 2 nose", 2, "nose"],
+    ["35 x 260 - 2 price tag", 2, "price tag"],
+  ];
+  for (const [text, quantity, name] of cases) {
+    const [line] = read(text);
+    assert.ok(line.ok, text);
+    assert.deepEqual([line.widthMm, line.lengthMm > 0, line.quantity, line.name], [line.widthMm, true, quantity, name], text);
+  }
+  const [pic] = read("15.6 x 66.4 - 3 pic");
+  assert.ok(pic.ok && pic.widthMm === 156 && pic.lengthMm === 664);
+});
