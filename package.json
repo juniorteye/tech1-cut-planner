@@ -10,6 +10,8 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "test:client": "next build && node --env-file=.env.local e2e/client-journey.mjs",
     "test:banding": "next build && node --env-file=.env.local e2e/banding-journey.mjs",
+    "test:sections": "next build && node --env-file=.env.local e2e/sections-journey.mjs",
+    "test:all": "npm test && next build && node --env-file=.env.local e2e/client-journey.mjs && node --env-file=.env.local e2e/banding-journey.mjs && node --env-file=.env.local e2e/sections-journey.mjs",
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
     "logo": "node scripts/make-logo-images.mjs"
   },

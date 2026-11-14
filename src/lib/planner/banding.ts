@@ -70,10 +70,11 @@ const SHEET_SIZE = /\b\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?(?:\s*(?:ft|cm|mm))?(
 const plainName = (name: string) => name.replace(SHEET_SIZE, " ").replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
- * The tape a new board most likely takes, from the boards already set up:
- * a board with the same name apart from the sheet size ("D-Grey 9×7" next to
- * "D-Grey 8×4"), or a colour the name starts with ("D-Grey 9×7" and the
- * colour "D-Grey"). Null when nothing matches.
+ * The tape a new board most likely takes, from the boards already set up.
+ * A board with the same name apart from the sheet size ("D-Grey 9×7" next to
+ * "D-Grey 8×4") gives its tape. Otherwise the longest board name or colour
+ * the new name starts with does ("Grey Oak 18 mm" takes the "Grey Oak"
+ * board's tape, not "Grey"). Null when nothing matches.
  */
 export function suggestBandingColour(name: string, boards: Pick<Board, "name" | "bandingColour" | "noBanding">[]) {
   const plain = plainName(name);
@@ -81,14 +82,14 @@ export function suggestBandingColour(name: string, boards: Pick<Board, "name" | 
   const withTape = boards.filter((board) => !board.noBanding);
   const sameName = withTape.find((board) => plainName(board.name) === plain);
   if (sameName) return sameName.bandingColour;
-  const colours = withTape
-    .map((board) => board.bandingColour)
-    .filter((colour) => {
-      const c = plainName(colour);
-      return c !== "" && (plain === c || plain.startsWith(`${c} `));
-    })
-    .sort((a, b) => b.length - a.length);
-  return colours[0] ?? null;
+  let best: { colour: string; length: number } | null = null;
+  for (const board of withTape) {
+    for (const words of [plainName(board.name), plainName(board.bandingColour)]) {
+      const matches = words !== "" && (plain === words || plain.startsWith(`${words} `));
+      if (matches && (!best || words.length > best.length)) best = { colour: board.bandingColour, length: words.length };
+    }
+  }
+  return best?.colour ?? null;
 }
 
 /** Words for the parts list and cut sheet. */

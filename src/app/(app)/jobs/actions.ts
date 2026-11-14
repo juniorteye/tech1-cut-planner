@@ -13,6 +13,16 @@ function text(data: FormData, name: string) {
   return String(data.get(name) ?? "").trim();
 }
 
+/**
+ * Only a draft can be changed. A page left open in another tab may still show
+ * the forms after the plan was accepted, so every change checks again here.
+ */
+async function lockedError(jobId: string): Promise<ActionResult | null> {
+  const job = await getJob(jobId);
+  if (!job) return { error: "That job no longer exists." };
+  return job.status === "draft" ? null : { error: "This plan has been accepted, so the job is locked. Refresh the page." };
+}
+
 export async function createJob(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const workshop = await getWorkshop();
   const name = text(data, "name");
@@ -124,6 +134,8 @@ export async function deleteJob(_state: ActionResult, data: FormData): Promise<A
 
 export async function saveQuoteSettings(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const id = text(data, "jobId");
+  const locked = await lockedError(id);
+  if (locked) return locked;
   const allowance = Number(text(data, "allowance") || 0);
 
   if (!(allowance >= 0)) return { error: "The waste allowance must be a number." };
@@ -142,6 +154,8 @@ export async function saveQuoteSettings(_state: ActionResult, data: FormData): P
 export async function addPiece(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const workshop = await getWorkshop();
   const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
   const [materials, sections] = await Promise.all([getMaterials(), getSections(jobId)]);
   const section = sections.find((entry) => entry.id === text(data, "sectionId"));
   // A part takes its section's board unless another was picked for it.
@@ -188,8 +202,10 @@ export async function addPiece(_state: ActionResult, data: FormData): Promise<Ac
 }
 
 export async function deletePiece(_state: ActionResult, data: FormData): Promise<ActionResult> {
+  const locked = await lockedError(text(data, "jobId"));
+  if (locked) return locked;
   const supabase = await createClient();
-  const { error } = await supabase.from("pieces").delete().eq("id", text(data, "id"));
+  const { error } = await supabase.from("pieces").delete().eq("id", text(data, "id")).eq("job_id", text(data, "jobId"));
 
   if (error) return { error: "Could not remove the piece." };
   revalidatePath(`/jobs/${text(data, "jobId")}`);
@@ -257,7 +273,10 @@ export async function undoJobCut(_state: ActionResult, data: FormData) {
 
 export async function saveSets(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const jobId = text(data, "jobId");
-  const sets = Number(text(data, "sets") || 1);
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
+  // Blank is refused, not read as 1: the box is never empty unless something went wrong.
+  const sets = text(data, "sets") === "" ? Number.NaN : Number(text(data, "sets"));
 
   if (!Number.isInteger(sets) || sets < 1 || sets > 999) return { error: "How many sets must be a whole number from 1." };
 
@@ -277,6 +296,8 @@ async function boardFor(data: FormData) {
 export async function addSection(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const workshop = await getWorkshop();
   const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
   const material = await boardFor(data);
 
   if (!material) return { error: "Choose the board for this section." };
@@ -299,6 +320,8 @@ export async function addSection(_state: ActionResult, data: FormData): Promise<
 export async function saveSection(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const id = text(data, "id");
   const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
   const material = await boardFor(data);
 
   if (!text(data, "name")) return { error: "Give the section a name, for example Miniyator." };
@@ -315,7 +338,11 @@ export async function saveSection(_state: ActionResult, data: FormData): Promise
     return { error: `This section's parts are ${oldKind === "board" ? "board" : "timber"} parts. Pick another ${oldKind}.` };
   }
 
-  const { error } = await supabase.from("sections").update({ name: text(data, "name"), material_id: material.id }).eq("id", id);
+  const { error } = await supabase
+    .from("sections")
+    .update({ name: text(data, "name"), material_id: material.id })
+    .eq("id", id)
+    .eq("job_id", jobId);
   if (error) return { error: "Could not save the section." };
 
   // Parts that followed the section's board move with it; parts given their own board keep it.
@@ -335,8 +362,10 @@ export async function saveSection(_state: ActionResult, data: FormData): Promise
 /** Removes the section and every part listed under it. */
 export async function deleteSection(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
   const supabase = await createClient();
-  const { error } = await supabase.from("sections").delete().eq("id", text(data, "id"));
+  const { error } = await supabase.from("sections").delete().eq("id", text(data, "id")).eq("job_id", jobId);
 
   if (error) return { error: "Could not remove the section." };
   revalidatePath(`/jobs/${jobId}`);

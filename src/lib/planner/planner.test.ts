@@ -4,6 +4,7 @@ import type { Board, Leftover, Piece, Section, Timber } from "../types";
 import { bandingByColour, describeEdges, jobBanding, pieceBandingMm, suggestBandingColour } from "./banding.ts";
 import { isGuillotine, packBoards, type BoardPackInput } from "./boards.ts";
 import { packPlanks } from "./planks.ts";
+import { countLabel, planGroups } from "./plan-groups.ts";
 import { planJob } from "./plan-job.ts";
 import { quoteTotal } from "./quote.ts";
 import type { PlannerPiece, Rect } from "./types";
@@ -485,4 +486,97 @@ test("sections: a timber section is grouped and numbered like the boards", () =>
   assert.equal(plan.pieceCount, 6);
   assert.ok(plan.planks.flatMap((p) => p.cuts).every((cut) => cut.section === "Frame"));
   assert.deepEqual(plan.groups!.map((g) => [g.kind, g.sections, g.toBuy]), [["timber", ["Frame"], 2]]);
+});
+
+test("plan groups: a plan saved before sections is grouped from its boards and planks", () => {
+  const saved = planJob({
+    pieces: [piece({ quantity: 1 }), piece({ id: "r", materialId: "t", name: "Rail", lengthMm: 1000, widthMm: null, quantity: 2 })],
+    materials: [ply, twoByFour],
+    leftovers: [{ ...record, id: "L", materialId: "ply", lengthMm: 900, widthMm: 700, status: "available", value: 9000, sourceJobId: null, usedByJobId: null }],
+    kerfMm: 3,
+  });
+  // As it was stored before sections and colours: no groups, no sets, banding per board.
+  const old = { ...structuredClone(saved), groups: undefined, sets: undefined, banding: [{ materialName: "Ply 18", mm: 1234 }] };
+  assert.deepEqual(
+    planGroups(old).map((g) => [g.materialName, g.kind, g.sections, g.toBuy, g.fromStore, g.bandingMm]),
+    [["Ply 18", "board", [], 0, 1, 1234], ["2 × 4", "timber", [], 1, 0, 0]],
+  );
+  // A plan with groups is read as saved.
+  assert.equal(planGroups(saved), saved.groups);
+  assert.equal(countLabel({ kind: "board", toBuy: 1 }), "1 board");
+  assert.equal(countLabel({ kind: "board", toBuy: 12 }), "12 boards");
+  assert.equal(countLabel({ kind: "timber", toBuy: 2 }), "2 planks");
+});
+
+test("banding colours: the longest colour a name starts with wins, and sizes in any form are ignored", () => {
+  const boards = [
+    { name: "Grey", bandingColour: "Grey", noBanding: false },
+    { name: "Grey Oak", bandingColour: "Grey Oak tape", noBanding: false },
+    { name: "Walnut 18 mm 8 x 4 ft", bandingColour: "Walnut", noBanding: false },
+  ];
+  assert.equal(suggestBandingColour("Grey Oak 18 mm", boards), "Grey Oak tape");
+  assert.equal(suggestBandingColour("Grey 18 mm", boards), "Grey");
+  assert.equal(suggestBandingColour("Greyish", boards), null);
+  assert.equal(suggestBandingColour("Walnut 18 mm 9×7", boards), "Walnut");
+  assert.equal(suggestBandingColour("WALNUT 18 MM 272 x 212 cm", boards), "Walnut");
+});
+
+test("without sections a plan is made exactly as before: Setup order, no section names", () => {
+  const mel: Board = { ...ply, id: "mel", name: "Melamine 16", bandingColour: "Melamine 16" };
+  const plan = planJob({
+    pieces: [piece({ id: "m", materialId: "mel", quantity: 1 }), piece({ quantity: 1 })],
+    materials: [ply, mel],
+    leftovers: [],
+    kerfMm: 3,
+  });
+  assert.deepEqual(plan.boards.map((b) => b.materialName), ["Ply 18", "Melamine 16"]);
+  assert.ok(plan.boards.flatMap((b) => b.placements).every((p) => !("section" in p)));
+  assert.equal(plan.sets, 1);
+  assert.deepEqual(plan.groups!.map((g) => g.sections), [[], []]);
+});
+
+test("sets: offcuts in the store are used first, then new sheets for the rest", () => {
+  const offcut: Leftover = {
+    ...record, id: "off", materialId: "ply", lengthMm: 800, widthMm: 600, status: "available", value: 5000, sourceJobId: null, usedByJobId: null,
+  };
+  const plan = planJob({ pieces: [piece({ quantity: 1 })], materials: [ply], leftovers: [offcut], kerfMm: 3, sets: 4 });
+  assert.equal(plan.pieceCount, 4);
+  assert.deepEqual(plan.leftoverIds, ["off"]);
+  assert.equal(plan.groups![0].fromStore, 1);
+  assert.equal(plan.groups![0].toBuy, plan.buy[0].count);
+  assert.equal(plan.boards.flatMap((b) => b.placements).length, 4);
+});
+
+test("sections: a part that fits no board is reported with its section, never dropped", () => {
+  const plan = planJob({
+    pieces: [
+      piece({ id: "big", sectionId: "s1", name: "Plinth", lengthMm: 2800, widthMm: 100, quantity: 2 }),
+      piece({ id: "ok", sectionId: "s1", name: "Shelf", quantity: 1 }),
+    ],
+    materials: [ply],
+    leftovers: [],
+    kerfMm: 3,
+    sections: [section("s1", "Miniyator", "ply", 0)],
+    sets: 2,
+  });
+  assert.equal(plan.pieceCount, 6);
+  assert.equal(plan.unplaced.length, 4);
+  assert.ok(plan.unplaced.every((p) => p.name === "Plinth" && p.section === "Miniyator" && p.materialName === "Ply 18"));
+  assert.equal(plan.boards.flatMap((b) => b.placements).length, 2);
+});
+
+test("back panels: per-board banding is 0 even when the colour is shared with a banded board", () => {
+  const grey: Board = { ...ply, id: "grey", name: "Grey 18", bandingColour: "Grey" };
+  const greyBack: Board = { ...ply, id: "gb", name: "Grey back 6", bandingColour: "Grey", noBanding: true, thicknessMm: 6 };
+  const plan = planJob({
+    pieces: [
+      piece({ materialId: "grey", lengthMm: 1000, widthMm: 500, bandedLengths: 2, quantity: 1 }),
+      piece({ id: "b", materialId: "gb", lengthMm: 1000, widthMm: 500, bandedLengths: 2, bandedWidths: 2, quantity: 1 }),
+    ],
+    materials: [grey, greyBack],
+    leftovers: [],
+    kerfMm: 3,
+  });
+  assert.deepEqual(plan.banding, [{ colour: "Grey", mm: 2000 }]);
+  assert.deepEqual(plan.groups!.map((g) => [g.materialName, g.bandingMm]), [["Grey 18", 2000], ["Grey back 6", 0]]);
 });
