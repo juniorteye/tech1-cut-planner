@@ -10,7 +10,9 @@ import { EdgeIcon } from "@/components/edge-icon";
 import { OffcutNote } from "@/components/offcut-note";
 import { getJob, getLeftovers, getMaterials, getPieces, getPlan, getSections, getWorkshop } from "@/lib/data";
 import { bandingByColour, describeEdges, pieceBandingMm, takesBanding } from "@/lib/planner/banding";
+import { fitAdvice, type FitAdvice } from "@/lib/planner/fit";
 import { countLabel, planGroups } from "@/lib/planner/plan-groups";
+import { groupUnplaced } from "@/lib/planner/unplaced";
 import { OTHER_PARTS, planJob } from "@/lib/planner/plan-job";
 import type { JobPlan } from "@/lib/planner/types";
 import type { DisplayUnit, Material, Piece, Section } from "@/lib/types";
@@ -20,10 +22,14 @@ import {
   addSection,
   deletePiece,
   deleteSection,
+  movePieceToBoard,
+  splitPiece,
   saveQuoteSettings,
   saveSection,
   saveSets,
 } from "../actions";
+import { PasteList } from "./paste-list";
+import { PieceEditor } from "./piece-editor";
 import { PieceFields } from "./piece-fields";
 
 export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
@@ -97,7 +103,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
         </p>
       )}
 
-      {plan && <LiveTotals plan={plan} jobId={job.id} />}
+      {plan && <LiveTotals plan={plan} />}
 
       {sections.map((section) => (
         <SectionCard
@@ -190,6 +196,10 @@ function SectionCard({ section, pieces, materials, unit, editable, sets, jobId }
             </ActionForm>
           </div>
           <details className="mt-3">
+            <summary className="inline-flex min-h-10 cursor-pointer items-center font-semibold">Paste a list</summary>
+            <PasteList jobId={jobId} sectionId={section.id} unit={unit} banding={takesBanding(board)} />
+          </details>
+          <details className="mt-1">
             <summary className="inline-flex min-h-10 cursor-pointer items-center text-sm font-semibold text-muted">
               Change or remove this section
             </summary>
@@ -248,34 +258,103 @@ function PieceList({ pieces, materials, unit, editable, sets, jobId }: Shared & 
 
   return (
     <ul className="divide-y divide-line">
-      {pieces.map((piece) => (
-        <li key={piece.id} className="flex items-center gap-3 py-2">
-          {takesBanding(material(piece.materialId)) && <EdgeIcon {...piece} />}
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold">
-              {piece.quantity} × {piece.name}
-            </p>
-            <p className="text-sm text-muted">
-              {formatSize(piece.lengthMm, piece.widthMm, unit)} · {material(piece.materialId)?.name ?? ""}
-              {piece.grainLocked && " · grain locked"}
-              {sets > 1 && ` · ${piece.quantity * sets} for ${sets} sets`}
-            </p>
-            {takesBanding(material(piece.materialId)) && (
-              <p className="text-sm text-muted">
-                Banding: {describeEdges(piece)}
-                {pieceBandingMm(piece) > 0 && ` · ${formatMetres(pieceBandingMm(piece) * piece.quantity)}`}
+      {pieces.map((piece) => {
+        const own = material(piece.materialId);
+        const advice = fitAdvice(piece, own, materials);
+        return (
+          <li key={piece.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
+            {takesBanding(own) && <EdgeIcon {...piece} />}
+            <div className="min-w-0 flex-1 basis-40">
+              <p className="font-semibold">
+                {piece.quantity} × {piece.name}
               </p>
+              <p className="text-sm text-muted">
+                {formatSize(piece.lengthMm, piece.widthMm, unit)} · {own?.name ?? ""}
+                {piece.grainLocked && " · grain locked"}
+                {sets > 1 && ` · ${piece.quantity * sets} for ${sets} sets`}
+              </p>
+              {takesBanding(own) && (
+                <p className="text-sm text-muted">
+                  Banding: {describeEdges(piece)}
+                  {pieceBandingMm(piece) > 0 && ` · ${formatMetres(pieceBandingMm(piece) * piece.quantity)}`}
+                </p>
+              )}
+              {piece.note && <p className="text-sm font-semibold">Note: {piece.note}</p>}
+            </div>
+            {editable && (
+              <PieceEditor piece={piece} materials={materials} unit={unit}>
+                <ActionForm action={deletePiece} submitLabel="Remove" pendingLabel="Removing…" subtle className="shrink-0">
+                  <input type="hidden" name="id" value={piece.id} />
+                  <input type="hidden" name="jobId" value={jobId} />
+                </ActionForm>
+              </PieceEditor>
             )}
-          </div>
+            {advice.kind !== "fits" && own && (
+              <FitWarning piece={piece} own={own} advice={advice} unit={unit} editable={editable} jobId={jobId} />
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+const sheetSize = (m: Material, unit: DisplayUnit) =>
+  m.kind === "board"
+    ? formatSize(m.lengthMm, m.widthMm, unit)
+    : `the longest ${m.name} (${formatSize(Math.max(...m.lengths.map((l) => l.lengthMm)), null, unit)})`;
+
+/** On the row of a part that does not fit its board: the reason, and the one-tap fix. */
+function FitWarning({
+  piece,
+  own,
+  advice,
+  unit,
+  editable,
+  jobId,
+}: {
+  piece: Piece;
+  own: Material;
+  advice: Exclude<FitAdvice, { kind: "fits" }>;
+  unit: DisplayUnit;
+  editable: boolean;
+  jobId: string;
+}) {
+  const problem = `Too ${advice.reason} for ${sheetSize(own, unit)}.`;
+  return (
+    <div role="alert" className="basis-full rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+      {advice.kind === "switch" ? (
+        <>
+          <p className="font-semibold">
+            {problem} Use {sheetSize(advice.to, unit)}?
+          </p>
+          <p>It fits {advice.to.name}.</p>
           {editable && (
-            <ActionForm action={deletePiece} submitLabel="Remove" pendingLabel="Removing…" subtle className="shrink-0">
+            <ActionForm
+              action={movePieceToBoard}
+              submitLabel={`Use ${sheetSize(advice.to, unit)}`}
+              pendingLabel="Moving…"
+              className="[&_button]:mt-2"
+            >
+              <input type="hidden" name="id" value={piece.id} />
+              <input type="hidden" name="jobId" value={jobId} />
+              <input type="hidden" name="materialId" value={advice.to.id} />
+            </ActionForm>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="font-semibold">{problem} It fits no board in Setup, so it cannot be planned.</p>
+          <p>Split it into 2 pieces to be joined: the same width and banding, half the length each.</p>
+          {editable && (
+            <ActionForm action={splitPiece} submitLabel="Split into 2 pieces" pendingLabel="Splitting…" className="[&_button]:mt-2">
               <input type="hidden" name="id" value={piece.id} />
               <input type="hidden" name="jobId" value={jobId} />
             </ActionForm>
           )}
-        </li>
-      ))}
-    </ul>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -283,13 +362,15 @@ function PieceList({ pieces, materials, unit, editable, sets, jobId }: Shared & 
  * Stays in view while parts are entered: boards so far, banding per tape
  * colour, and a line per board type, all for every set.
  */
-function LiveTotals({ plan, jobId }: { plan: JobPlan; jobId: string }) {
+function LiveTotals({ plan }: { plan: JobPlan }) {
   const sheets = plan.buy.filter((item) => item.widthMm !== null).reduce((sum, item) => sum + item.count, 0);
   const planks = plan.buy.filter((item) => item.widthMm === null).reduce((sum, item) => sum + item.count, 0);
   const fromStore = [...plan.boards, ...plan.planks].filter((stock) => stock.source === "leftover").length;
   const banding = bandingByColour(plan.banding);
   const groups = planGroups(plan);
   const sets = plan.sets ?? 1;
+  const stuck = groupUnplaced(plan.unplaced);
+  const stuckBoards = new Set(stuck.map((line) => line.materialName));
 
   return (
     <section
@@ -298,15 +379,27 @@ function LiveTotals({ plan, jobId }: { plan: JobPlan; jobId: string }) {
       className="sticky top-0 z-10 -mx-4 border-b-4 border-ruler bg-paper/95 px-4 py-2 backdrop-blur"
     >
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <p>
-          <span className="font-display text-3xl font-bold">{sheets}</span>{" "}
-          <span className="text-sm text-muted">{sheets === 1 ? "board to buy" : "boards to buy"}</span>
-        </p>
-        {planks > 0 && (
-          <p>
-            <span className="font-display text-3xl font-bold">{planks}</span>{" "}
-            <span className="text-sm text-muted">{planks === 1 ? "plank to buy" : "planks to buy"}</span>
+        {/* A count that leaves parts out would be wrong, so none is shown until every part fits. */}
+        {stuck.length > 0 ? (
+          <p className="text-red-700">
+            <span className="font-display text-3xl font-bold">Can&apos;t plan</span>{" "}
+            <span className="text-sm font-semibold">
+              {plan.unplaced.length === 1 ? "1 part doesn't fit" : `${plan.unplaced.length} parts don't fit`}
+            </span>
           </p>
+        ) : (
+          <>
+            <p>
+              <span className="font-display text-3xl font-bold">{sheets}</span>{" "}
+              <span className="text-sm text-muted">{sheets === 1 ? "board to buy" : "boards to buy"}</span>
+            </p>
+            {planks > 0 && (
+              <p>
+                <span className="font-display text-3xl font-bold">{planks}</span>{" "}
+                <span className="text-sm text-muted">{planks === 1 ? "plank to buy" : "planks to buy"}</span>
+              </p>
+            )}
+          </>
         )}
         {/* Tape is bought by colour, so each colour gets its own figure, never one combined number. */}
         {(banding.length > 0 ? banding : [{ colour: "", mm: 0 }]).map((line) => (
@@ -325,18 +418,28 @@ function LiveTotals({ plan, jobId }: { plan: JobPlan; jobId: string }) {
       <ul className="flex flex-wrap gap-x-4 text-sm text-muted">
         {groups.map((group) => (
           <li key={group.materialId}>
-            <span className="font-semibold text-ink">{group.materialName}:</span> {countLabel(group)}
+            <span className="font-semibold text-ink">{group.materialName}:</span>{" "}
+            {stuckBoards.has(group.materialName) ? (
+              <span className="font-semibold text-red-700">can&apos;t plan</span>
+            ) : (
+              countLabel(group)
+            )}
             {group.kind === "board" && ` · ${formatMetres(group.bandingMm)} banding`}
           </li>
         ))}
       </ul>
       {fromStore > 0 && <OffcutNote count={fromStore} />}
-      {plan.unplaced.length > 0 && (
-        <p role="alert" className="text-sm font-semibold text-red-700">
-          {plan.unplaced.length === 1 ? "1 part does not fit" : `${plan.unplaced.length} parts do not fit`} the board.{" "}
-          <Link href={`/jobs/${jobId}/plan`} className="underline">
-            See which
-          </Link>
+      {stuck.length > 0 && (
+        <p role="alert" className="text-sm text-red-700">
+          <span className="font-semibold">Doesn&apos;t fit any board: </span>
+          {stuck.slice(0, 3).map((line, index) => (
+            <span key={`${line.section}-${line.name}-${line.materialName}`}>
+              {index > 0 && ", "}
+              {line.count} × {line.name}
+              {line.section && ` (${line.section})`}
+            </span>
+          ))}
+          {stuck.length > 3 && ` and ${stuck.length - 3} more`}. Each says what to do on its row below.
         </p>
       )}
     </section>

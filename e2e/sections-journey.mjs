@@ -71,7 +71,7 @@ const jobRow = async () => (await admin.from("jobs").select("*").eq("id", jobId)
 
 /** Opens a section's "Change or remove" fold, unless it is already open. */
 async function openSectionFold(name, page = laptop) {
-  const fold = card(name, page).locator("details");
+  const fold = card(name, page).locator("details", { has: page.getByText("Change or remove this section") });
   if ((await fold.getAttribute("open")) === null) await card(name, page).getByText("Change or remove this section").click();
   return fold;
 }
@@ -176,6 +176,22 @@ try {
     checkEqual("the first section is saved on the chosen board", carcass?.material_id, ids[GREY]);
     checkEqual("and comes first", carcass?.position, 0);
     checkEqual("the job starts at 1 set", (await jobRow()).sets, 1);
+
+    // Sent before the board list has arrived: the first section still gets a board.
+    await laptop.goto(`${BASE}/jobs/new`);
+    await laptop.locator("select[name=materialId]").waitFor();
+    await laptop.locator("fieldset").evaluate((fieldset) => fieldset.remove());
+    await laptop.fill("input[name=name]", "Quick job");
+    await laptop.getByRole("button", { name: "Create job" }).click();
+    await laptop.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
+    const quickId = laptop.url().split("/").pop();
+    const { data: quick } = await admin.from("sections").select("name, material_id").eq("job_id", quickId);
+    checkEqual("a job sent before its board list loaded still gets a first section", quick.length, 1);
+    checkEqual("on the first board in Setup", quick[0]?.material_id, ids[BACK]);
+    checkEqual("named after it", quick[0]?.name, BACK);
+    await admin.from("jobs").delete().eq("id", quickId);
+    await laptop.goto(jobUrl);
+    await card("Carcass").waitFor();
   });
 
   await section("Moving a section to another board: which parts follow", async () => {
@@ -358,7 +374,7 @@ try {
   await section("The cut sheet and cost summary of a 3-set job", async () => {
     await laptop.goto(`${jobUrl}/cut-sheet`);
     await laptop.getByText("Numbered list").waitFor();
-    const rows = (await laptop.locator("tbody tr").allInnerTexts()).map(collapse);
+    const rows = (await laptop.locator("tbody tr").filter({ visible: true }).allInnerTexts()).map(collapse);
     // Per set: 2 sides + 1 door + 3 rails = 6. Carcass first: 6 sides and 3 doors, then 9 rails.
     checkEqual("18 parts for 3 sets", rows.length, 18);
     check("Carcass parts come first", rows.slice(0, 9).every((row) => row.includes("Carcass")), rows[0]);

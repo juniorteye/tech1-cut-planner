@@ -104,6 +104,7 @@ function toPiece(row: Row): Piece {
     grainLocked: row.grain_locked as boolean,
     bandedLengths: Number(row.banded_lengths ?? 0),
     bandedWidths: Number(row.banded_widths ?? 0),
+    note: (row.note as string | null) ?? "",
   };
 }
 

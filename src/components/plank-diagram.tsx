@@ -1,10 +1,14 @@
 import type { PlankLayout } from "@/lib/planner/types";
 
-export function PlankDiagram({ plank }: { plank: PlankLayout }) {
+/** One plank, drawn to scale against the longest plank in the plan. */
+export function PlankDiagram({ plank, longestMm = plank.lengthMm }: { plank: PlankLayout; longestMm?: number }) {
   const percent = (mm: number) => `${(mm / plank.lengthMm) * 100}%`;
 
   return (
-    <div className="relative h-9 overflow-hidden rounded-sm border border-ink bg-[#c6c8c2]">
+    <div
+      className="relative h-9 overflow-hidden rounded-sm border border-ink bg-[#c6c8c2]"
+      style={{ width: `${Math.min(100, (plank.lengthMm / longestMm) * 100)}%` }}
+    >
       {plank.cuts.map((cut) => (
         <div
           key={cut.number}

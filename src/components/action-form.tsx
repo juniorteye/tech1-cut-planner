@@ -12,6 +12,10 @@ type ActionFormProps = {
   subtle?: boolean;
   resetOnSave?: boolean;
   className?: string;
+  /** Runs after each successful save, e.g. to close an editor. */
+  onSaved?: () => void;
+  /** Keeps the button off until the form is ready, e.g. a pasted list still has unread lines. */
+  disabled?: boolean;
   children?: ReactNode;
 };
 
@@ -24,6 +28,8 @@ export function ActionForm({
   subtle,
   resetOnSave,
   className = "",
+  onSaved,
+  disabled = false,
   children,
 }: ActionFormProps) {
   const [state, run, pending] = useActionState(action, {});
@@ -31,10 +37,16 @@ export function ActionForm({
   const [noSignal, setNoSignal] = useState(false);
   const error = noSignal ? "You need a connection for this." : state.error;
 
+  const savedHandler = useRef(onSaved);
+  useEffect(() => {
+    savedHandler.current = onSaved;
+  });
+
   useEffect(() => {
     if (resetOnSave && state.savedAt) {
       form.current?.reset();
     }
+    if (state.savedAt) savedHandler.current?.();
   }, [resetOnSave, state.savedAt]);
 
   return (
@@ -60,8 +72,8 @@ export function ActionForm({
       )}
       <button
         type="submit"
-        disabled={pending}
-        className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold disabled:opacity-60 ${
+        disabled={pending || disabled}
+        className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold disabled:opacity-60 ${
           subtle ? "bg-transparent text-muted ring-1 ring-line" : "mt-3 bg-ruler text-ink"
         }`}
       >

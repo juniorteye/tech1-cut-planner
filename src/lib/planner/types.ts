@@ -19,6 +19,7 @@ export type PlannerPiece = {
   bandedWidths?: number;
   /** The job section the part is listed under. */
   section?: string;
+  note?: string;
 };
 
 export type PlannerCut = {
@@ -26,6 +27,7 @@ export type PlannerCut = {
   name: string;
   lengthMm: Mm;
   section?: string;
+  note?: string;
 };
 
 /** x runs along the sheet's length, which is also the grain direction. */
@@ -38,6 +40,7 @@ export type Placement = Rect & {
   bandedWidths?: number;
   /** Missing on plans saved before sections. */
   section?: string;
+  note?: string;
 };
 
 export type BoardLeftover = {
@@ -72,6 +75,7 @@ export type PlankCut = {
   number: number;
   name: string;
   section?: string;
+  note?: string;
   startMm: Mm;
   lengthMm: Mm;
 };
@@ -103,6 +107,9 @@ export type UnplacedPiece = {
   name: string;
   materialName: string;
   section?: string;
+  /** Missing on plans saved before parts that do not fit were shown with their size. */
+  lengthMm?: Mm;
+  widthMm?: Mm | null;
 };
 
 /** Totals for one board or timber across the job: what the top of the job and the plan group by. */

@@ -5,6 +5,7 @@ import { PrintButton } from "@/components/print-button";
 import { SetsBadge } from "@/components/sets-badge";
 import { getJob, getPlan, getWorkshop } from "@/lib/data";
 import { bandingByColour, describeEdges } from "@/lib/planner/banding";
+import { planNotes } from "@/lib/planner/notes";
 import { formatMetres, formatSize } from "@/lib/units";
 
 export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/cut-sheet">) {
@@ -25,6 +26,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
         number: placed.number,
         name: placed.name,
         section: placed.section,
+        note: placed.note,
         size: formatSize(placed.lengthMm, placed.widthMm, unit),
         from: `Board ${index + 1}${placed.turned ? " (turned)" : ""}`,
         edges: describeEdges({ bandedLengths: placed.bandedLengths ?? 0, bandedWidths: placed.bandedWidths ?? 0 }),
@@ -35,6 +37,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
         number: cut.number,
         name: cut.name,
         section: cut.section,
+        note: cut.note,
         size: formatSize(cut.lengthMm, null, unit),
         from: plank.materialName,
         edges: "",
@@ -46,6 +49,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
   // Only worth a column when the list has more than one heading.
   const showSections = new Set(rows.map((row) => row.section).filter(Boolean)).size > 1;
   const sets = plan.sets ?? 1;
+  const notes = planNotes(plan);
 
   return (
     <div className="space-y-5">
@@ -67,6 +71,19 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
           </span>
         </div>
       </div>
+
+      {notes.length > 0 && (
+        <section className="rounded-xl border border-line bg-card p-4">
+          <p className="font-semibold">Notes</p>
+          <ul>
+            {notes.map((note) => (
+              <li key={`${note.name}-${note.note}`}>
+                <span className="font-bold">{note.numbers}</span> {note.name}: {note.note}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {showEdges && (
         <p className="rounded-xl border border-line bg-card p-4">
@@ -99,7 +116,10 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
                 <tr key={row.number} className="border-t border-line">
                   <td className="py-1.5 pr-2 font-bold">{row.number}</td>
                   {showSections && <td className="py-1.5 pr-2 text-sm">{row.section}</td>}
-                  <td className="py-1.5 pr-2">{row.name}</td>
+                  <td className="py-1.5 pr-2">
+                    {row.name}
+                    {row.note && <span className="block text-sm font-semibold">Note: {row.note}</span>}
+                  </td>
                   <td className="whitespace-nowrap py-1.5 pr-2 font-mono text-sm">{row.size}</td>
                   <td className="py-1.5 pr-2 text-sm text-muted">{row.from}</td>
                   {showEdges && <td className="py-1.5 text-sm">{row.edges === "none" ? "–" : row.edges}</td>}

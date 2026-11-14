@@ -4,9 +4,14 @@ import type { Board, Leftover, Piece, Section, Timber } from "../types";
 import { bandingByColour, describeEdges, jobBanding, pieceBandingMm, suggestBandingColour } from "./banding.ts";
 import { isGuillotine, packBoards, type BoardPackInput } from "./boards.ts";
 import { packPlanks } from "./planks.ts";
+import { fitAdvice, fitsBoard } from "./fit.ts";
+import { numberRanges, planNotes } from "./notes.ts";
 import { countLabel, planGroups } from "./plan-groups.ts";
 import { planJob } from "./plan-job.ts";
 import { quoteTotal } from "./quote.ts";
+import { shoppingList, shoppingText } from "./shopping.ts";
+import { splitInTwo } from "./split.ts";
+import { groupUnplaced } from "./unplaced.ts";
 import type { PlannerPiece, Rect } from "./types";
 
 const sheet = { lengthMm: 2440, widthMm: 1220, trimMm: 0, price: 45000 };
@@ -249,7 +254,7 @@ const twoByFour: Timber = {
 };
 const piece = (over: Partial<Piece>): Piece => ({
   ...record, id: "p", jobId: "j", sectionId: null, materialId: "ply", name: "Side", lengthMm: 720, widthMm: 560, quantity: 2, grainLocked: false,
-  bandedLengths: 0, bandedWidths: 0, ...over,
+  bandedLengths: 0, bandedWidths: 0, note: "", ...over,
 });
 
 test("planJob totals what to buy, numbers pieces and records offcuts", () => {
@@ -579,4 +584,148 @@ test("back panels: per-board banding is 0 even when the colour is shared with a 
   });
   assert.deepEqual(plan.banding, [{ colour: "Grey", mm: 2000 }]);
   assert.deepEqual(plan.groups!.map((g) => [g.materialName, g.bandingMm]), [["Grey 18", 2000], ["Grey back 6", 0]]);
+});
+
+test("split: halves the long side and keeps the banding total exactly, whatever the marks", () => {
+  for (const [lengthMm, widthMm] of [[2800, 100], [100, 2800], [2700, 1300]] as const) {
+    for (const bandedLengths of [0, 1, 2]) {
+      for (const bandedWidths of [0, 1, 2]) {
+        const whole = { name: "Plinth", lengthMm, widthMm, bandedLengths, bandedWidths, quantity: 20 };
+        const halves = splitInTwo(whole);
+        const total = halves.reduce((sum, half) => sum + pieceBandingMm(half), 0);
+        assert.equal(total, pieceBandingMm(whole), `${lengthMm} × ${widthMm}, ${bandedLengths} long, ${bandedWidths} short`);
+        for (const half of halves) {
+          assert.equal(Math.max(half.lengthMm, half.widthMm!), Math.max(lengthMm, widthMm) / 2);
+          assert.equal(Math.min(half.lengthMm, half.widthMm!), Math.min(lengthMm, widthMm));
+          assert.equal(half.quantity, 20);
+          assert.equal(half.bandedLengths, bandedLengths);
+        }
+      }
+    }
+  }
+  const [a, b] = splitInTwo({ name: "Plinth", lengthMm: 2800, widthMm: 100, bandedLengths: 1, bandedWidths: 1 });
+  assert.deepEqual([a.name, a.bandedWidths, b.name, b.bandedWidths], ["Plinth (1 of 2)", 1, "Plinth (2 of 2)", 0]);
+  // An odd length halves to the tenth of a millimetre the database keeps.
+  assert.equal(splitInTwo({ name: "x", lengthMm: 2805.5, widthMm: 100, bandedLengths: 0, bandedWidths: 0 })[0].lengthMm, 1402.75);
+  // Timber is cut to length only.
+  const [rail] = splitInTwo({ name: "Rail", lengthMm: 5000, widthMm: null, bandedLengths: 0, bandedWidths: 0 });
+  assert.deepEqual([rail.lengthMm, rail.widthMm], [2500, null]);
+});
+
+test("fit: a part too long for the 8 × 4 is offered the 9 × 7 that takes the same tape", () => {
+  const grey48: Board = { ...board4x8, id: "g48", name: "D-Grey 8×4", bandingColour: "D-Grey" };
+  const grey97: Board = { ...board4x8, id: "g97", name: "D-Grey 9×7", bandingColour: "D-Grey", lengthMm: 2720, widthMm: 2120 };
+  const oak97: Board = { ...board4x8, id: "o97", name: "Oak 9×7", bandingColour: "Oak", lengthMm: 2720, widthMm: 2120 };
+  const huge: Board = { ...board4x8, id: "big", name: "Huge", bandingColour: "Huge", lengthMm: 3050, widthMm: 1830 };
+  const all = [huge, oak97, grey48, grey97, twoByFour];
+  const part = (lengthMm: number, widthMm: number | null, grainLocked = false) => ({ lengthMm, widthMm, grainLocked });
+
+  assert.deepEqual(fitAdvice(part(2100, 350), grey48, all), { kind: "fits" });
+  const tall = fitAdvice(part(350, 2600), grey48, all);
+  assert.ok(tall.kind === "switch" && tall.to.id === "g97" && tall.reason === "long");
+  // 120 × 260 is too long and too wide for 242 × 121; the 9 × 7 takes it.
+  const wide = fitAdvice(part(1200, 2600), grey48, all);
+  assert.ok(wide.kind === "switch" && wide.to.id === "g97");
+  // 130 × 200 fits the length of the 8 × 4 but not its width.
+  assert.equal((fitAdvice(part(1300, 2000), grey48, all) as { reason: string }).reason, "wide");
+  // 10 × 280 is longer than the 9 × 7 too, but the 305 cm board takes it.
+  const plinth = fitAdvice(part(100, 2800), grey48, all);
+  assert.ok(plinth.kind === "switch" && plinth.to.id === "big");
+  assert.deepEqual(fitAdvice(part(100, 2800), grey48, [grey48, grey97]), { kind: "split", reason: "long" });
+  // With the grain locked a part cannot be turned to fit.
+  assert.ok(fitsBoard(part(1200, 2000), grey48));
+  assert.ok(!fitsBoard(part(1200, 2000, true), grey48));
+  // Edge trim counts: 242 cm minus 1 cm each end leaves 240 cm.
+  assert.ok(!fitsBoard(part(2410, 100), { ...grey48, edgeTrimMm: 10 }));
+  // Timber: a rail longer than every plank has nowhere to go.
+  assert.deepEqual(fitAdvice(part(4000, null), twoByFour, all), { kind: "split", reason: "long" });
+  assert.deepEqual(fitAdvice(part(3000, null), twoByFour, all), { kind: "fits" });
+});
+
+test("unplaced: twenty of the same part are one line, in list order", () => {
+  const plan = planJob({
+    pieces: [
+      piece({ id: "a", sectionId: "s1", name: "Part 1", lengthMm: 2800, widthMm: 100, quantity: 20 }),
+      piece({ id: "b", sectionId: "s1", name: "Part 2", lengthMm: 2700, widthMm: 330, quantity: 2 }),
+      piece({ id: "c", sectionId: "s1", name: "Shelf", quantity: 1 }),
+    ],
+    materials: [ply],
+    leftovers: [],
+    kerfMm: 3,
+    sections: [section("s1", "Miniyator", "ply", 0)],
+  });
+  assert.deepEqual(
+    groupUnplaced(plan.unplaced).map((l) => [l.count, l.name, l.section, l.materialName]),
+    [[20, "Part 1", "Miniyator", "Ply 18"], [2, "Part 2", "Miniyator", "Ply 18"]],
+  );
+});
+
+test("shopping list: boards per type, tape per colour, the total, as WhatsApp text", () => {
+  const grey: Board = { ...board4x8, id: "grey", name: "D-Grey 8×4", bandingColour: "D-Grey", pricePerSheet: 50000 };
+  const plan = planJob({
+    pieces: [
+      piece({ materialId: "grey", lengthMm: 2100, widthMm: 350, bandedLengths: 1, quantity: 7 }),
+      piece({ id: "r", materialId: "t", name: "Rail", lengthMm: 1000, widthMm: null, quantity: 3 }),
+    ],
+    materials: [grey, twoByFour],
+    leftovers: [],
+    kerfMm: 3,
+    sets: 2,
+  });
+  const list = shoppingList(plan, "cm");
+  // 14 sides at 3 a sheet is 5 sheets; 6 rails at 3 a 12 ft plank is 2 planks.
+  assert.deepEqual(list.items.map((i) => [i.kind, i.count, i.name, i.size, i.total]), [
+    ["board", 5, "D-Grey 8×4", "242 × 121 cm", 250000],
+    ["plank", 2, "2 × 4", "365.8 cm", 16000],
+  ]);
+  assert.deepEqual(list.banding, [{ colour: "D-Grey", mm: 29400 }]);
+  assert.equal(list.total, 266000);
+  const text = shoppingText(list, { name: "Kitchens", customer: "Mrs Mensah" }, 2);
+  assert.equal(
+    text,
+    [
+      "*Shopping list: Kitchens × 2 sets (Mrs Mensah)*",
+      "",
+      "*Boards and timber*",
+      "• 5 boards D-Grey 8×4, 242 × 121 cm: GH¢ 2,500.00",
+      "• 2 planks 2 × 4, 365.8 cm: GH¢ 160.00",
+      "",
+      "*Edge banding*",
+      "• D-Grey: 29.40 m",
+      "",
+      "*Total for the wood: GH¢ 2,660.00*",
+    ].join("\n"),
+  );
+});
+
+test("notes and sizes travel with the parts into the plan", () => {
+  const plan = planJob({
+    pieces: [
+      piece({ quantity: 2, note: "thick tape on front" }),
+      piece({ id: "r", materialId: "t", name: "Rail", lengthMm: 1000, widthMm: null, quantity: 1, note: "pine" }),
+      piece({ id: "big", name: "Plinth", lengthMm: 2800, widthMm: 100, quantity: 1 }),
+    ],
+    materials: [ply, twoByFour],
+    leftovers: [],
+    kerfMm: 3,
+  });
+  assert.ok(plan.boards.flatMap((b) => b.placements).filter((p) => p.name === "Side").every((p) => p.note === "thick tape on front"));
+  assert.equal(plan.planks[0].cuts[0].note, "pine");
+  assert.ok(plan.boards.flatMap((b) => b.placements).every((p) => p.name === "Side" || !("note" in p)));
+  assert.deepEqual([plan.unplaced[0].lengthMm, plan.unplaced[0].widthMm], [2800, 100]);
+});
+
+test("notes: listed once per part with its numbers as ranges", () => {
+  assert.equal(numberRanges([7, 1, 2, 3, 9, 10]), "1–3, 7, 9–10");
+  assert.equal(numberRanges([4]), "4");
+  const plan = planJob({
+    pieces: [piece({ quantity: 3, note: "thick tape on front" }), piece({ id: "b", name: "Back", quantity: 1 }), piece({ id: "c", name: "Top", quantity: 1, note: "grain across" })],
+    materials: [ply],
+    leftovers: [],
+    kerfMm: 3,
+  });
+  assert.deepEqual(planNotes(plan), [
+    { numbers: "1–3", name: "Side", note: "thick tape on front" },
+    { numbers: "5", name: "Top", note: "grain across" },
+  ]);
 });

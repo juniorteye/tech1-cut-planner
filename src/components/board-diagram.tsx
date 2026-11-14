@@ -1,4 +1,5 @@
 import type { BoardLayout, Placement } from "@/lib/planner/types";
+import type { Mm } from "@/lib/types";
 
 type Line = { x1: number; y1: number; x2: number; y2: number };
 
@@ -20,8 +21,14 @@ function bandedLines(placed: Placement): Line[] {
   ];
 }
 
-export function BoardDiagram({ board }: { board: BoardLayout }) {
+/**
+ * One board, drawn to scale. `largestMm` is the longest sheet in the plan:
+ * every board is drawn at its own length against it, so an offcut from the
+ * store shows small next to a full sheet instead of filling the same width.
+ */
+export function BoardDiagram({ board, largestMm = board.lengthMm }: { board: BoardLayout; largestMm?: Mm }) {
   const { lengthMm, widthMm } = board;
+  const scale = Math.min(100, (lengthMm / largestMm) * 100);
   const text = Math.max(lengthMm, widthMm) * 0.06;
   const band = Math.max(lengthMm, widthMm) * 0.005;
 
@@ -30,7 +37,9 @@ export function BoardDiagram({ board }: { board: BoardLayout }) {
       viewBox={`0 0 ${lengthMm} ${widthMm}`}
       role="img"
       aria-label={`${board.materialName}: ${board.placements.length} pieces`}
-      className="w-full rounded-sm border border-ink bg-[#c6c8c2]"
+      style={{ width: `${scale}%` }}
+      data-scale={scale.toFixed(1)}
+      className="block rounded-sm border border-ink bg-[#c6c8c2]"
     >
       {board.placements.map((placed) => (
         <g key={placed.number}>

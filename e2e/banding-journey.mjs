@@ -86,7 +86,11 @@ async function measurePiecesList(page) {
           const box = el.getBoundingClientRect();
           return box.width === 0 || (box.left >= cardBox.left - 0.5 && box.right <= cardBox.right + 0.5);
         }),
-        buttonRight: button?.right,
+        buttonLeft: button?.left,
+        buttonTop: button?.top,
+        buttonBottom: button?.bottom,
+        detailsTop: details?.top,
+        detailsBottom: details && details.top + details.height,
         detailsRight: details && details.left + details.width,
       };
     });
@@ -101,7 +105,9 @@ function checkPiecesList(rows, label) {
     }
     if (row.icon && row.details && row.icon.right > row.details.left) issues.push("picture is not to the left of the details");
     if (row.details && row.details.width < row.rowWidth * 0.4) issues.push(`details only ${Math.round(row.details.width)} px of ${Math.round(row.rowWidth)}`);
-    if (row.buttonRight !== undefined && row.detailsRight > row.buttonRight) issues.push("details run under Remove");
+    // On a phone the buttons may drop to their own line; they only clash if they share a line with the details.
+    const sameLine = row.buttonTop < row.detailsBottom && row.buttonBottom > row.detailsTop;
+    if (row.buttonLeft !== undefined && sameLine && row.detailsRight > row.buttonLeft + 1) issues.push("details run under the buttons");
     if (!row.insideCard) issues.push("something spills out of the card");
     return issues.map((issue) => `${row.text}: ${issue}`);
   });
@@ -381,13 +387,19 @@ try {
     await submit(pieceForm, "Add piece");
     await waitForPiece(laptop, 1, "Part 9");
     const tooBig = await readTotals(laptop);
-    check("a part longer than the board is flagged in the totals", tooBig.text.includes("1 part does not fit"), tooBig.text);
+    check("a part longer than the board stops the count: Can't plan", tooBig.text.includes("Can't plan 1 part doesn't fit"), tooBig.text);
+    check("no board count is shown while it does not fit", !/\d+ boards? to buy/.test(tooBig.text), tooBig.text);
+    check("the totals name it", tooBig.text.includes("Doesn't fit any board: 1 × Part 9"), tooBig.text);
+    const row = collapse(await laptop.locator("li", { hasText: "× Part 9" }).innerText());
+    check("its row offers the 9 × 7", row.includes("Too long for 242 × 121 cm. Use 272 × 212 cm?"), row);
     const plan = await openPlan(laptop, consoleUrl);
-    check("the plan names it", plan.includes("These pieces do not fit your materials: Part 9"), plan.slice(0, 200));
+    check("the plan says it can't plan", plan.includes("Can't plan: some parts don't fit"), plan.slice(0, 200));
+    check("and names the part with its size", plan.includes("1 × Part 9 · 250 × 50 cm"), plan.slice(0, 400));
+    checkEqual("with no shopping list to get wrong", await laptop.getByRole("region", { name: "Shopping list" }).count(), 0);
     checkEqual("and it cannot be accepted", await laptop.getByRole("button", { name: "Yes: accept this plan" }).count(), 0);
     await laptop.goto(consoleUrl);
     await removePiece(laptop, "Part 9");
-    check("once removed, nothing is flagged", !(await readTotals(laptop)).text.includes("does not fit"));
+    check("once removed, nothing is flagged", !(await readTotals(laptop)).text.includes("doesn't fit"));
 
     await pieceForm.locator("select[name=materialId]").selectOption({ label: TIMBER });
     checkEqual("timber has no edges to band", await pieceForm.locator("fieldset").count(), 0);
@@ -407,7 +419,7 @@ try {
     check("2 boards to buy", plan.includes("2 boards to buy"), plan.slice(0, 200));
     checkEqual("and both are new sheets", await laptop.getByText("New sheet ·").count(), 2);
     check(`${BANDING} of edge banding`, plan.includes(`${BANDING} edge banding`));
-    check("it says what to buy", plan.includes(`Buy: 2 of ${SMALL} (242 × 121 cm)`), plan.slice(0, 300));
+    check("the shopping list says what to buy", plan.includes(`${SMALL} 242 × 121 cm · GH¢ 450.00 each 2 GH¢ 900.00`), plan.slice(0, 600));
 
     // Pieces are numbered in the order entered: Part 1 is 1, Part 2 is 2 to 5, and so on.
     const expected = CONSOLE.flatMap((row) => Array.from({ length: row.quantity }, () => [row.long, row.short]));
@@ -445,7 +457,7 @@ try {
     await laptop.getByText("Numbered list").waitFor();
     const sheet = collapse(await main(laptop));
     check("the cut sheet gives the banding total", sheet.includes(`Edge banding: ${BANDING} for ${SMALL}`), sheet.slice(0, 200));
-    const rows = await laptop.locator("tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.cells].map((td) => td.innerText.trim())));
+    const rows = await laptop.locator("tbody tr").filter({ visible: true }).evaluateAll((trs) => trs.map((tr) => [...tr.cells].map((td) => td.innerText.trim())));
     checkEqual("27 lines, one per part", rows.length, 27);
     const names = CONSOLE.flatMap((row, i) => Array.from({ length: row.quantity }, () => [`Part ${i + 1}`, EDGE_WORDS[[row.long, row.short]]]));
     const mismatched = rows.filter((cells) => {
@@ -553,7 +565,7 @@ try {
     check("the totals say the offcut is used and not counted", totals.text.includes("Also uses 1 offcut from your leftover store, not counted in the boards to buy"), totals.text);
 
     const plan = await openPlan(laptop, consoleUrl);
-    check("the plan agrees: 2 boards to buy", plan.includes("2 boards to buy") && plan.includes(`Buy: 2 of ${SMALL}`), plan.slice(0, 300));
+    check("the plan agrees: 2 boards to buy", plan.includes("2 boards to buy") && plan.includes(`${SMALL} 242 × 121 cm · GH¢ 450.00 each 2`), plan.slice(0, 600));
     checkEqual("exactly 2 boards on the plan are new sheets", await laptop.getByText("New sheet ·").count(), 2);
     checkEqual("and 1 is the offcut", await laptop.getByText("From your leftover store ·").count(), 1);
     check("the plan says so too", plan.includes("Also uses 1 offcut from your leftover store"));
@@ -588,7 +600,7 @@ try {
 
     await laptop.goto(`${BASE}/jobs/${job.id}/cut-sheet`);
     await laptop.getByText("Numbered list").waitFor();
-    checkEqual("its cut sheet opens with all 27 parts", await laptop.locator("tbody tr").count(), 27);
+    checkEqual("its cut sheet opens with all 27 parts", await laptop.locator("tbody tr").filter({ visible: true }).count(), 27);
     checkEqual("with no banding column it never had", await laptop.getByRole("columnheader", { name: "Band" }).count(), 0);
     await openPlan(laptop, `${BASE}/jobs/${job.id}`);
     check("its plan opens too", true);
@@ -814,7 +826,7 @@ try {
     check("the plan groups the D-Grey 8 × 4 boards under the D-Grey section", (await group(GREY)).includes("Section: D-Grey · 12 boards to buy"), (await group(GREY)).slice(0, 160));
     check("the 9 × 7 boards too", (await group(GREY_LARGE)).includes("Section: D-Grey · 5 boards to buy"), (await group(GREY_LARGE)).slice(0, 160));
     check("the back panels under B-Panels", (await group(BACK)).includes("Section: B-Panels"), (await group(BACK)).slice(0, 160));
-    const groupOrder = await laptop.locator("main section[aria-label] > div > h2").allInnerTexts();
+    const groupOrder = await laptop.locator("section[data-board-group] h2").filter({ visible: true }).allInnerTexts();
     checkEqual("the board groups follow the job's sections", groupOrder.join(" | "), [GREY, GREY_LARGE, BACK, SATIYA].join(" | "));
     check("Board 1 holds part 1", (await laptop.getByRole("region", { name: GREY, exact: true }).getByRole("heading", { name: `Board 1: ${GREY}` }).count()) === 1);
     await laptop.screenshot({ path: `${OUTPUT}/5-sections-plan.png`, fullPage: true });
@@ -822,7 +834,7 @@ try {
     await laptop.getByRole("button", { name: "Yes: accept this plan" }).click();
     await laptop.waitForURL("**/cut-sheet");
     await laptop.getByText("Numbered list").waitFor();
-    const rows = await laptop.locator("tbody tr").allInnerTexts();
+    const rows = await laptop.locator("tbody tr").filter({ visible: true }).allInnerTexts();
     checkEqual("the cut sheet lists every part of every set", rows.length, 85);
     check("it is numbered section by section: D-Grey first", collapse(rows[0]).startsWith("1 D-Grey"), rows[0]);
     check("and the Satiya doors last", collapse(rows.at(-1)).startsWith("85 Satiya doors"), rows.at(-1));

@@ -80,6 +80,7 @@ function finishBar(bar: Bar, kerfMm: Mm, minLeftoverLengthMm: Mm): PackedPlank {
       startMm: start,
       lengthMm: cut.lengthMm,
       ...(cut.section !== undefined && { section: cut.section }),
+      ...(cut.note && { note: cut.note }),
     };
     start += cut.lengthMm + kerfMm;
     return placed;

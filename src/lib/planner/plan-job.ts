@@ -66,6 +66,7 @@ export function planJob({ pieces: entered, materials, leftovers, kerfMm, sets = 
     Array.from({ length: piece.quantity }, () => ({ piece, number: ++number, section: sectionName(piece) })),
   );
   const withSection = (section: string | undefined) => (section === undefined ? {} : { section });
+  const withNote = (piece: Piece) => (piece.note ? { note: piece.note } : {});
 
   // Boards follow the list: the board of the first section comes first, so
   // Board 1 holds part 1 and the plan reads in the same order as the job.
@@ -89,6 +90,7 @@ export function planJob({ pieces: entered, materials, leftovers, kerfMm, sets = 
         number,
         name: piece.name,
         ...withSection(section),
+        ...withNote(piece),
         lengthMm: piece.lengthMm,
         widthMm: piece.widthMm ?? piece.lengthMm,
         grainLocked: piece.grainLocked,
@@ -136,11 +138,13 @@ export function planJob({ pieces: entered, materials, leftovers, kerfMm, sets = 
         });
       }
       unplaced.push(
-        ...result.unplaced.map(({ number, name, section }) => ({
-          number,
-          name,
+        ...result.unplaced.map((left) => ({
+          number: left.number,
+          name: left.name,
           materialName: material.name,
-          ...withSection(section),
+          ...withSection(left.section),
+          lengthMm: left.lengthMm,
+          widthMm: left.widthMm,
         })),
       );
     } else {
@@ -149,6 +153,7 @@ export function planJob({ pieces: entered, materials, leftovers, kerfMm, sets = 
         name: piece.name,
         lengthMm: piece.lengthMm,
         ...withSection(section),
+        ...withNote(piece),
       }));
       const result = packPlanks({
         cuts,
@@ -186,11 +191,13 @@ export function planJob({ pieces: entered, materials, leftovers, kerfMm, sets = 
         }
       }
       unplaced.push(
-        ...result.unplaced.map(({ number, name, section }) => ({
-          number,
-          name,
+        ...result.unplaced.map((left) => ({
+          number: left.number,
+          name: left.name,
           materialName: material.name,
-          ...withSection(section),
+          ...withSection(left.section),
+          lengthMm: left.lengthMm,
+          widthMm: null,
         })),
       );
     }

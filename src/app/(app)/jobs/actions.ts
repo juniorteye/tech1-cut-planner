@@ -7,6 +7,8 @@ import type { ActionResult } from "@/lib/action-result";
 import { getJob, getLeftovers, getMaterials, getPieces, getSections, getWorkshop } from "@/lib/data";
 import { planJob } from "@/lib/planner/plan-job";
 import { createClient } from "@/lib/supabase/server";
+import { splitInTwo } from "@/lib/planner/split";
+import type { DisplayUnit, Material } from "@/lib/types";
 import { parseLength } from "@/lib/units";
 
 function text(data: FormData, name: string) {
@@ -38,8 +40,13 @@ export async function createJob(_state: ActionResult, data: FormData): Promise<A
 
   if (error) return { error: "Could not create the job." };
 
-  // The first section comes with the job, so a simple job is one list as before.
-  const material = (await getMaterials()).find((entry) => entry.id === text(data, "materialId"));
+  // The first section comes with the job, so a simple job is one list as before. If the
+  // form was sent before its board list arrived, it goes on the first board, as the list would show.
+  const materials = await getMaterials();
+  const material =
+    materials.find((entry) => entry.id === text(data, "materialId")) ??
+    materials.find((entry) => entry.kind === "board") ??
+    materials[0];
   if (material) {
     await supabase.from("sections").insert({
       workshop_id: workshop.id,
@@ -151,6 +158,59 @@ export async function saveQuoteSettings(_state: ActionResult, data: FormData): P
   return { savedAt: Date.now() };
 }
 
+const NOTE_LIMIT = 200;
+const EDGE_COUNTS = [0, 1, 2];
+
+/** The checks Add and Edit share. The material is the part's own pick, else its section's board. */
+function readPiece(data: FormData, unit: DisplayUnit, materials: Material[], sectionMaterialId: string) {
+  const material = materials.find((entry) => entry.id === (text(data, "materialId") || sectionMaterialId));
+  const lengthMm = parseLength(text(data, "length"), unit);
+  const widthMm = parseLength(text(data, "width"), unit);
+  const quantity = Number(text(data, "quantity") || 1);
+  const bandedLengths = Number(text(data, "bandedLengths") || 0);
+  const bandedWidths = Number(text(data, "bandedWidths") || 0);
+  const note = text(data, "note");
+
+  if (!material) return { error: "Choose a board." } as const;
+  if (lengthMm === null) return { error: `Check the length. Try 720 or 2' 4".` } as const;
+  if (material.kind === "board" && widthMm === null) return { error: `Check the width. Try 560 or 1' 10".` } as const;
+  if (!Number.isInteger(quantity) || quantity < 1) return { error: "How many must be a whole number." } as const;
+  if (!EDGE_COUNTS.includes(bandedLengths) || !EDGE_COUNTS.includes(bandedWidths)) {
+    return { error: "Tap the edges again to mark the banding." } as const;
+  }
+  if (note.length > NOTE_LIMIT) return { error: `Keep the note under ${NOTE_LIMIT} characters.` } as const;
+
+  const banded = takesBanding(material);
+  return {
+    row: {
+      material_id: material.id,
+      length_mm: lengthMm,
+      width_mm: material.kind === "board" ? widthMm : null,
+      quantity,
+      grain_locked: data.get("grainLocked") === "on",
+      banded_lengths: banded ? bandedLengths : 0,
+      banded_widths: banded ? bandedWidths : 0,
+      note,
+    },
+  } as const;
+}
+
+/**
+ * Parts are listed in the order they were added. Rows saved in one go would
+ * share a timestamp and come back in any order, so each gets its own, a
+ * millisecond apart.
+ */
+function inOrder<T>(rows: T[]) {
+  const start = Date.now();
+  return rows.map((row, index) => ({ ...row, created_at: new Date(start + index).toISOString() }));
+}
+
+async function nextPartNumber(jobId: string) {
+  const supabase = await createClient();
+  const { count } = await supabase.from("pieces").select("id", { count: "exact", head: true }).eq("job_id", jobId);
+  return (count ?? 0) + 1;
+}
+
 export async function addPiece(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const workshop = await getWorkshop();
   const jobId = text(data, "jobId");
@@ -158,45 +218,163 @@ export async function addPiece(_state: ActionResult, data: FormData): Promise<Ac
   if (locked) return locked;
   const [materials, sections] = await Promise.all([getMaterials(), getSections(jobId)]);
   const section = sections.find((entry) => entry.id === text(data, "sectionId"));
-  // A part takes its section's board unless another was picked for it.
-  const materialId = text(data, "materialId") || section?.materialId || "";
-  const material = materials.find((entry) => entry.id === materialId);
-  const lengthMm = parseLength(text(data, "length"), workshop.displayUnit);
-  const widthMm = parseLength(text(data, "width"), workshop.displayUnit);
-  const quantity = Number(text(data, "quantity") || 1);
-  const bandedLengths = Number(text(data, "bandedLengths") || 0);
-  const bandedWidths = Number(text(data, "bandedWidths") || 0);
-  const edgeCounts = [0, 1, 2];
-
   if (!section) return { error: "This section no longer exists. Refresh the page." };
-  if (!material) return { error: "Choose a board." };
-  if (lengthMm === null) return { error: `Check the length. Try 720 or 2' 4".` };
-  if (material.kind === "board" && widthMm === null) return { error: `Check the width. Try 560 or 1' 10".` };
-  if (!Number.isInteger(quantity) || quantity < 1) return { error: "How many must be a whole number." };
-  if (!edgeCounts.includes(bandedLengths) || !edgeCounts.includes(bandedWidths)) {
-    return { error: "Tap the edges again to mark the banding." };
-  }
+
+  const read = readPiece(data, workshop.displayUnit, materials, section.materialId);
+  if ("error" in read) return { error: read.error };
 
   const supabase = await createClient();
   // A name is optional: the sketch only has sizes, so an unnamed part is numbered by its line.
-  const { count } = await supabase.from("pieces").select("id", { count: "exact", head: true }).eq("job_id", jobId);
-  const isBoard = material.kind === "board";
-  const banded = takesBanding(material);
   const { error } = await supabase.from("pieces").insert({
+    ...read.row,
     workshop_id: workshop.id,
     job_id: jobId,
     section_id: section.id,
-    material_id: materialId,
-    name: text(data, "name") || `Part ${(count ?? 0) + 1}`,
-    length_mm: lengthMm,
-    width_mm: isBoard ? widthMm : null,
-    quantity,
-    grain_locked: data.get("grainLocked") === "on",
-    banded_lengths: banded ? bandedLengths : 0,
-    banded_widths: banded ? bandedWidths : 0,
+    name: text(data, "name") || `Part ${await nextPartNumber(jobId)}`,
   });
 
   if (error) return { error: "Could not add the piece." };
+  revalidatePath(`/jobs/${jobId}`);
+  return { savedAt: Date.now() };
+}
+
+export async function updatePiece(_state: ActionResult, data: FormData): Promise<ActionResult> {
+  const workshop = await getWorkshop();
+  const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
+  const [materials, sections, pieces] = await Promise.all([getMaterials(), getSections(jobId), getPieces(jobId)]);
+  const piece = pieces.find((entry) => entry.id === text(data, "id"));
+  if (!piece) return { error: "This part no longer exists. Refresh the page." };
+  const sectionBoard = sections.find((entry) => entry.id === piece.sectionId)?.materialId ?? piece.materialId;
+
+  const read = readPiece(data, workshop.displayUnit, materials, sectionBoard);
+  if ("error" in read) return { error: read.error };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("pieces")
+    .update({ ...read.row, name: text(data, "name") || piece.name })
+    .eq("id", piece.id)
+    .eq("job_id", jobId);
+
+  if (error) return { error: "Could not save the part." };
+  revalidatePath(`/jobs/${jobId}`);
+  return { savedAt: Date.now() };
+}
+
+/** A part too long for every board becomes two halves to be joined, with the same banding in total. */
+export async function splitPiece(_state: ActionResult, data: FormData): Promise<ActionResult> {
+  const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
+  const piece = (await getPieces(jobId)).find((entry) => entry.id === text(data, "id"));
+  if (!piece) return { error: "This part no longer exists. Refresh the page." };
+
+  const halves = splitInTwo(piece).map((half) => ({
+    workshop_id: half.workshopId,
+    job_id: jobId,
+    section_id: half.sectionId,
+    material_id: half.materialId,
+    name: half.name,
+    length_mm: half.lengthMm,
+    width_mm: half.widthMm,
+    quantity: half.quantity,
+    grain_locked: half.grainLocked,
+    banded_lengths: half.bandedLengths,
+    banded_widths: half.bandedWidths,
+    note: half.note,
+  }));
+
+  const supabase = await createClient();
+  // The halves go in before the whole part comes out, so a failure never loses it.
+  const { error } = await supabase.from("pieces").insert(inOrder(halves));
+  if (error) return { error: "Could not split the part." };
+  const { error: removeError } = await supabase.from("pieces").delete().eq("id", piece.id).eq("job_id", jobId);
+  if (removeError) {
+    return { error: "The halves were added, but the whole part is still listed. Remove it by hand." };
+  }
+  revalidatePath(`/jobs/${jobId}`);
+  return { savedAt: Date.now() };
+}
+
+/** "Too long for 242 × 121 cm. Use 272 × 212 cm?": moves one part to another board of the same kind. */
+export async function movePieceToBoard(_state: ActionResult, data: FormData): Promise<ActionResult> {
+  const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
+  const [materials, pieces] = await Promise.all([getMaterials(), getPieces(jobId)]);
+  const piece = pieces.find((entry) => entry.id === text(data, "id"));
+  const from = materials.find((entry) => entry.id === piece?.materialId);
+  const to = materials.find((entry) => entry.id === text(data, "materialId"));
+  if (!piece || !from) return { error: "This part no longer exists. Refresh the page." };
+  if (!to || to.kind !== from.kind) return { error: "Pick a board of the same kind." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("pieces")
+    .update({
+      material_id: to.id,
+      // A back panel takes no banding, so marks do not follow a part onto one.
+      ...(!takesBanding(to) && { banded_lengths: 0, banded_widths: 0 }),
+    })
+    .eq("id", piece.id)
+    .eq("job_id", jobId);
+
+  if (error) return { error: "Could not move the part." };
+  revalidatePath(`/jobs/${jobId}`);
+  return { savedAt: Date.now() };
+}
+
+/** Adds every line of a pasted list to a section, on the section's board. */
+export async function addPastedPieces(_state: ActionResult, data: FormData): Promise<ActionResult> {
+  const workshop = await getWorkshop();
+  const jobId = text(data, "jobId");
+  const locked = await lockedError(jobId);
+  if (locked) return locked;
+  const [materials, sections] = await Promise.all([getMaterials(), getSections(jobId)]);
+  const section = sections.find((entry) => entry.id === text(data, "sectionId"));
+  if (!section) return { error: "This section no longer exists. Refresh the page." };
+  const material = materials.find((entry) => entry.id === section.materialId);
+  if (!material) return { error: "This section's board has been removed. Change the section first." };
+
+  let rows: { widthMm: number; lengthMm: number; quantity: number; name: string; bandedLengths: number; bandedWidths: number }[];
+  try {
+    rows = JSON.parse(text(data, "rows"));
+  } catch {
+    return { error: "Read the list again, then add it." };
+  }
+  if (!Array.isArray(rows) || rows.length === 0) return { error: "There are no parts to add." };
+  const valid = rows.every(
+    (row) =>
+      row.lengthMm > 0 && row.widthMm > 0 && Number.isInteger(row.quantity) && row.quantity > 0 &&
+      EDGE_COUNTS.includes(row.bandedLengths) && EDGE_COUNTS.includes(row.bandedWidths) &&
+      typeof row.name === "string" && row.name.length <= 200,
+  );
+  if (!valid) return { error: "Some lines are not right. Read the list again." };
+
+  const first = await nextPartNumber(jobId);
+  const banded = takesBanding(material);
+  const isBoard = material.kind === "board";
+  const supabase = await createClient();
+  const { error } = await supabase.from("pieces").insert(
+    inOrder(rows.map((row, index) => ({
+      workshop_id: workshop.id,
+      job_id: jobId,
+      section_id: section.id,
+      material_id: material.id,
+      name: row.name.trim() || `Part ${first + index}`,
+      // Timber is cut to length, so the longer size is the length and there is no width.
+      length_mm: isBoard ? row.lengthMm : Math.max(row.lengthMm, row.widthMm),
+      width_mm: isBoard ? row.widthMm : null,
+      quantity: row.quantity,
+      grain_locked: false,
+      banded_lengths: banded ? row.bandedLengths : 0,
+      banded_widths: banded ? row.bandedWidths : 0,
+    }))),
+  );
+
+  if (error) return { error: "Could not add the list." };
   revalidatePath(`/jobs/${jobId}`);
   return { savedAt: Date.now() };
 }

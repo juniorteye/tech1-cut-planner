@@ -318,7 +318,8 @@ try {
   await section("Accepting the plan: the cut sheet and the customer's cost summary", async () => {
     await openPlan(laptop, jobUrl);
     await accept(laptop);
-    checkEqual("the cut sheet lists all 13 pieces", await laptop.locator("tbody tr").count(), 13);
+    // The plan page stays loaded out of sight after leaving it, so only rows on screen count.
+    checkEqual("the cut sheet lists all 13 pieces", await laptop.locator("tbody tr").filter({ visible: true }).count(), 13);
     check("it names the job and customer", (await main(laptop)).includes("Bedroom wardrobe · Madam Esi"));
     await laptop.screenshot({ path: `${OUTPUT}/4-cut-sheet.png`, fullPage: true });
 
@@ -630,7 +631,8 @@ try {
       await waitForPiece(laptop, row.quantity, `Part ${index + 1}`);
       if (index === 0) {
         checkEqual("the board stays chosen for the next part", await pieceForm.locator("select[name=materialId] option:checked").innerText(), CONSOLE_BOARD);
-        checkEqual("the edges start blank for the next part", await pieceForm.getByRole("button", { pressed: true }).count(), 0);
+        checkEqual("the edges start blank for the next part", await pieceForm.locator("fieldset").getByRole("button", { pressed: true }).count(), 0);
+        checkEqual("with None shown as chosen", await pieceForm.getByRole("button", { name: "None", exact: true }).getAttribute("aria-pressed"), "true");
         check("totals appear as soon as the first part is in", (await laptop.getByRole("region", { name: "Totals so far" }).innerText()).includes("2.10 m"));
       }
     }
@@ -771,7 +773,7 @@ try {
 
     await phone.goto(`${jobUrl}/cut-sheet`);
     await phone.getByText("Numbered list").waitFor();
-    checkEqual("the cut sheet opens with no signal, all 13 pieces", await phone.locator("tbody tr").count(), 13);
+    checkEqual("the cut sheet opens with no signal, all 13 pieces", await phone.locator("tbody tr").filter({ visible: true }).count(), 13);
     await phone.getByRole("status").waitFor();
     check("the phone says it has no signal", true);
     await phone.goto(`${jobUrl}/cost-summary`);

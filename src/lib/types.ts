@@ -103,6 +103,8 @@ export type Piece = WorkshopRecord & {
   bandedLengths: number;
   /** How many of the two short sides are banded: 0, 1 or 2. */
   bandedWidths: number;
+  /** A short note for the workers, such as "thick tape on front". Empty when there is none. */
+  note: string;
 };
 
 export type LeftoverStatus = "available" | "reserved" | "used" | "damaged";
