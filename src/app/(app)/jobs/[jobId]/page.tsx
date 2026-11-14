@@ -81,7 +81,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
                   )}
                 </div>
                 {editable && (
-                  <ActionForm action={deletePiece} submitLabel="Remove" subtle className="shrink-0">
+                  <ActionForm action={deletePiece} submitLabel="Remove" pendingLabel="Removing…" subtle className="shrink-0">
                     <input type="hidden" name="id" value={piece.id} />
                     <input type="hidden" name="jobId" value={job.id} />
                   </ActionForm>
@@ -103,7 +103,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
 
       {editable && materials.length > 0 && (
         <Card title="Add a piece">
-          <ActionForm action={addPiece} submitLabel="Add piece" resetOnSave>
+          <ActionForm action={addPiece} submitLabel="Add piece" pendingLabel="Adding…" resetOnSave>
             <input type="hidden" name="jobId" value={job.id} />
             <PieceFields materials={materials} unit={unit} defaultMaterialId={pieces.at(-1)?.materialId} />
           </ActionForm>
@@ -112,7 +112,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
 
       {editable && (
         <Card title="How to price this job">
-          <ActionForm action={saveQuoteSettings} submitLabel="Save">
+          <ActionForm action={saveQuoteSettings} submitLabel="Save" pendingLabel="Saving…">
             <input type="hidden" name="jobId" value={job.id} />
             <div className="grid gap-3 sm:grid-cols-2">
               <SelectField label="Charge the customer for" name="quoteMode" defaultValue={job.quoteMode}>

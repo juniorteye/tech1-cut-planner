@@ -113,7 +113,7 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
               Not yet: change pieces
             </ButtonLink>
             {plan.unplaced.length === 0 && (
-              <ActionForm action={acceptPlan} submitLabel="Yes: accept this plan">
+              <ActionForm action={acceptPlan} submitLabel="Yes: accept this plan" pendingLabel="Accepting…">
                 <input type="hidden" name="jobId" value={jobId} />
               </ActionForm>
             )}
@@ -123,10 +123,10 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
           <>
             <ButtonLink href={`/jobs/${jobId}/cut-sheet`}>Cut sheet</ButtonLink>
             <ButtonLink href={`/jobs/${jobId}/cost-summary`}>Cost summary</ButtonLink>
-            <ActionForm action={markJobCut} submitLabel="Mark as cut">
+            <ActionForm action={markJobCut} submitLabel="Mark as cut" pendingLabel="Saving…">
               <input type="hidden" name="jobId" value={jobId} />
             </ActionForm>
-            <ActionForm action={reopenJob} submitLabel="Change the plan" subtle>
+            <ActionForm action={reopenJob} submitLabel="Change the plan" pendingLabel="Reopening…" subtle>
               <input type="hidden" name="jobId" value={jobId} />
             </ActionForm>
           </>
@@ -135,7 +135,7 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
           <>
             <ButtonLink href={`/jobs/${jobId}/cut-sheet`}>Cut sheet</ButtonLink>
             <ButtonLink href={`/jobs/${jobId}/cost-summary`}>Cost summary</ButtonLink>
-            <ActionForm action={undoJobCut} submitLabel="Undo cut" subtle>
+            <ActionForm action={undoJobCut} submitLabel="Undo cut" pendingLabel="Undoing…" subtle>
               <input type="hidden" name="jobId" value={jobId} />
             </ActionForm>
           </>

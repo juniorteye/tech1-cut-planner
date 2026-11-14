@@ -19,7 +19,7 @@ export default async function AccountPage() {
       <Card title="Change your password">
         <ActionForm
           action={changePassword}
-          submitLabel="Change password"
+          submitLabel="Change password" pendingLabel="Changing…"
           savedMessage="Your password has been changed."
           resetOnSave
         >
@@ -50,14 +50,14 @@ export default async function AccountPage() {
                       <div className="mt-3 space-y-3">
                         <ActionForm
                           action={setWorkerPassword}
-                          submitLabel="Set new password"
+                          submitLabel="Set new password" pendingLabel="Setting…"
                           savedMessage="Password set. Give it to them."
                           resetOnSave
                         >
                           <input type="hidden" name="userId" value={person.userId} />
                           <FormField label="New password" name="password" autoComplete="off" minLength={8} required />
                         </ActionForm>
-                        <ActionForm action={removeWorker} submitLabel="Remove from team" subtle>
+                        <ActionForm action={removeWorker} submitLabel="Remove from team" pendingLabel="Removing…" subtle>
                           <input type="hidden" name="userId" value={person.userId} />
                         </ActionForm>
                       </div>
@@ -69,7 +69,7 @@ export default async function AccountPage() {
           </Card>
 
           <Card title="Add someone">
-            <ActionForm action={addWorker} submitLabel="Add to team" resetOnSave>
+            <ActionForm action={addWorker} submitLabel="Add to team" pendingLabel="Adding…" resetOnSave>
               <div className="grid gap-3 sm:grid-cols-3">
                 <FormField label="Name" name="name" autoComplete="off" required />
                 <FormField label="Email" name="email" type="email" autoComplete="off" required />

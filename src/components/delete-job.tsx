@@ -24,7 +24,7 @@ export function DeleteJob({ jobId, jobName }: { jobId: string; jobName: string }
       <button type="button" onClick={() => setAsking(false)} className={SUBTLE_BUTTON}>
         Keep it
       </button>
-      <ActionForm action={deleteJob} submitLabel="Yes, delete" subtle>
+      <ActionForm action={deleteJob} submitLabel="Yes, delete" pendingLabel="Deleting…" subtle>
         <input type="hidden" name="id" value={jobId} />
       </ActionForm>
     </div>

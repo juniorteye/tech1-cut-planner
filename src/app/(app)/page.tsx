@@ -47,7 +47,7 @@ export default async function JobsPage() {
                   <StatusBadge label={STATUS_LABELS[job.status]} />
                 </span>
               </Link>
-              <ActionForm action={copyJob} submitLabel="Copy" subtle>
+              <ActionForm action={copyJob} submitLabel="Copy" pendingLabel="Copying…" subtle>
                 <input type="hidden" name="id" value={job.id} />
               </ActionForm>
               {job.status === "draft" && <DeleteJob jobId={job.id} jobName={job.name} />}

@@ -6,6 +6,8 @@ import type { ActionResult } from "@/lib/action-result";
 type ActionFormProps = {
   action: (state: ActionResult, data: FormData) => Promise<ActionResult>;
   submitLabel: string;
+  /** What the button says while it waits, e.g. "Adding…". */
+  pendingLabel: string;
   savedMessage?: string;
   subtle?: boolean;
   resetOnSave?: boolean;
@@ -17,6 +19,7 @@ type ActionFormProps = {
 export function ActionForm({
   action,
   submitLabel,
+  pendingLabel,
   savedMessage,
   subtle,
   resetOnSave,
@@ -58,11 +61,17 @@ export function ActionForm({
       <button
         type="submit"
         disabled={pending}
-        className={`rounded-md px-4 py-2 font-semibold disabled:opacity-60 ${
+        className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold disabled:opacity-60 ${
           subtle ? "bg-transparent text-muted ring-1 ring-line" : "mt-3 bg-ruler text-ink"
         }`}
       >
-        {submitLabel}
+        {pending && (
+          <span
+            aria-hidden="true"
+            className="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
+          />
+        )}
+        {pending ? pendingLabel : submitLabel}
       </button>
     </form>
   );

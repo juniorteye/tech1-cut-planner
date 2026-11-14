@@ -338,11 +338,30 @@ try {
     checkEqual("the totals did not move", (await readTotals(laptop)).banding, "27.41");
 
     await pieceForm.locator("input[name=length]").fill("50");
+    // Hold each save back a little so the loader is on screen long enough to see.
+    const slowSaves = async (route) => {
+      if (route.request().method() === "POST" && route.request().headers()["next-action"]) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+      await route.continue();
+    };
+    await laptop.route("**/*", slowSaves);
     await submit(pieceForm, "Add piece");
+    const adding = laptop.getByRole("button", { name: "Adding…", exact: true });
+    await adding.waitFor();
+    check("the button shows a loader while the piece saves", (await adding.locator(".animate-spin").count()) === 1);
+    check("and cannot be pressed twice", await adding.isDisabled());
     await waitForPiece(laptop, 2, "Part 9");
+    await laptop.getByRole("button", { name: "Add piece", exact: true }).waitFor();
+    checkEqual("once saved it says Add piece again", await laptop.getByRole("button", { name: "Adding…" }).count(), 0);
     // 2 × (2 × 50 + 35) = 270 cm
     checkEqual("once corrected it saves with those edges: 2.70 m more", (await readTotals(laptop)).banding, "30.11");
-    await removePiece(laptop, "Part 9");
+    const partRow = laptop.locator("li", { hasText: "× Part 9" });
+    await partRow.getByRole("button", { name: "Remove", exact: true }).click();
+    await partRow.getByRole("button", { name: "Removing…", exact: true }).waitFor();
+    check("Remove shows a loader too", true);
+    await partRow.waitFor({ state: "detached" });
+    await laptop.unroute("**/*", slowSaves);
     checkEqual("removing it takes its banding back off", (await readTotals(laptop)).banding, "27.41");
     checkEqual("and its parts", (await readTotals(laptop)).parts, 27);
 

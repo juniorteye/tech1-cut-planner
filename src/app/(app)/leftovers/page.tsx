@@ -46,7 +46,7 @@ export default async function LeftoversPage() {
                     <p className="mt-2 text-sm text-muted">Held for an accepted job, so it cannot be changed.</p>
                   ) : (
                     <div className="mt-3 space-y-2">
-                      <ActionForm action={updateLeftover} submitLabel="Fix size">
+                      <ActionForm action={updateLeftover} submitLabel="Fix size" pendingLabel="Saving…">
                         <input type="hidden" name="id" value={leftover.id} />
                         <div className="grid grid-cols-2 gap-3">
                           <FormField label="Length" name="length" defaultValue={sizeText(leftover.lengthMm)} required />
@@ -56,11 +56,11 @@ export default async function LeftoversPage() {
                         </div>
                       </ActionForm>
                       <div className="flex flex-wrap gap-2">
-                        <ActionForm action={setLeftoverStatus} submitLabel="Mark damaged" subtle>
+                        <ActionForm action={setLeftoverStatus} submitLabel="Mark damaged" pendingLabel="Saving…" subtle>
                           <input type="hidden" name="id" value={leftover.id} />
                           <input type="hidden" name="status" value="damaged" />
                         </ActionForm>
-                        <ActionForm action={setLeftoverStatus} submitLabel="Used for something else" subtle>
+                        <ActionForm action={setLeftoverStatus} submitLabel="Used for something else" pendingLabel="Saving…" subtle>
                           <input type="hidden" name="id" value={leftover.id} />
                           <input type="hidden" name="status" value="used" />
                         </ActionForm>
@@ -76,7 +76,7 @@ export default async function LeftoversPage() {
 
       {materials.length > 0 && (
         <Card title="Add a leftover by hand">
-          <ActionForm action={addLeftover} submitLabel="Add leftover" resetOnSave>
+          <ActionForm action={addLeftover} submitLabel="Add leftover" pendingLabel="Adding…" resetOnSave>
             <div className="grid gap-3 sm:grid-cols-3">
               <SelectField label="Material" name="materialId">
                 {materials.map((material) => (
@@ -100,7 +100,7 @@ export default async function LeftoversPage() {
                 <span>
                   {materialName(leftover.materialId)} · {formatSize(leftover.lengthMm, leftover.widthMm, unit)}
                 </span>
-                <ActionForm action={setLeftoverStatus} submitLabel="Put back" subtle>
+                <ActionForm action={setLeftoverStatus} submitLabel="Put back" pendingLabel="Putting back…" subtle>
                   <input type="hidden" name="id" value={leftover.id} />
                   <input type="hidden" name="status" value="available" />
                 </ActionForm>

@@ -19,7 +19,7 @@ export default async function SetupPage() {
       <h1 className="font-display text-3xl font-bold">Set up your workshop</h1>
 
       <Card title="Your saw and units">
-        <ActionForm action={saveWorkshop} submitLabel="Save">
+        <ActionForm action={saveWorkshop} submitLabel="Save" pendingLabel="Saving…">
           <div className="grid gap-3 sm:grid-cols-3">
             <FormField label="Workshop name" name="name" defaultValue={workshop.name} required />
             <FormField label="Blade cut thickness (mm)" name="kerf" inputMode="decimal" defaultValue={workshop.kerfMm} required />
@@ -44,10 +44,10 @@ export default async function SetupPage() {
                   </span>
                 </summary>
                 <div className="mt-3">
-                  <ActionForm action={saveBoard} submitLabel="Save changes">
+                  <ActionForm action={saveBoard} submitLabel="Save changes" pendingLabel="Saving…">
                     <BoardFields board={board} />
                   </ActionForm>
-                  <ActionForm action={deleteMaterial} submitLabel="Remove" subtle className="mt-2">
+                  <ActionForm action={deleteMaterial} submitLabel="Remove" pendingLabel="Removing…" subtle className="mt-2">
                     <input type="hidden" name="id" value={board.id} />
                   </ActionForm>
                 </div>
@@ -57,7 +57,7 @@ export default async function SetupPage() {
         </ul>
         <details open={boards.length === 0} className="mt-3">
           <summary className="cursor-pointer font-semibold">Add a board</summary>
-          <ActionForm action={saveBoard} submitLabel="Add board" resetOnSave className="mt-3">
+          <ActionForm action={saveBoard} submitLabel="Add board" pendingLabel="Adding…" resetOnSave className="mt-3">
             <BoardFields />
           </ActionForm>
         </details>
@@ -77,10 +77,10 @@ export default async function SetupPage() {
                   </span>
                 </summary>
                 <div className="mt-3">
-                  <ActionForm action={saveTimber} submitLabel="Save changes">
+                  <ActionForm action={saveTimber} submitLabel="Save changes" pendingLabel="Saving…">
                     <TimberFields timber={timber} />
                   </ActionForm>
-                  <ActionForm action={deleteMaterial} submitLabel="Remove" subtle className="mt-2">
+                  <ActionForm action={deleteMaterial} submitLabel="Remove" pendingLabel="Removing…" subtle className="mt-2">
                     <input type="hidden" name="id" value={timber.id} />
                   </ActionForm>
                 </div>
@@ -90,7 +90,7 @@ export default async function SetupPage() {
         </ul>
         <details open={timbers.length === 0} className="mt-3">
           <summary className="cursor-pointer font-semibold">Add timber</summary>
-          <ActionForm action={saveTimber} submitLabel="Add timber" resetOnSave className="mt-3">
+          <ActionForm action={saveTimber} submitLabel="Add timber" pendingLabel="Adding…" resetOnSave className="mt-3">
             <TimberFields />
           </ActionForm>
         </details>
