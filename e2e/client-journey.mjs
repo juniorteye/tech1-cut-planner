@@ -273,7 +273,7 @@ try {
     check("it plans 3 sheets, the proven minimum", plan.includes("3 boards to buy"), plan.slice(0, 160));
     check("it buys one 12 ft plank for the rails", plan.includes("1 plank to buy"));
     check(`the cost is ${WARDROBE_TOTAL}`, plan.includes(WARDROBE_TOTAL));
-    check("every sheet has a drawing", (await laptop.getByRole("heading", { name: /^Board \d/ }).count()) === 3);
+    check("every sheet has a drawing", (await laptop.getByRole("heading", { name: /^Board \d+:/ }).count()) === 3);
     await laptop.screenshot({ path: `${OUTPUT}/3-plan.png`, fullPage: true });
 
     const { count } = await admin.from("plans").select("job_id", { count: "exact" }).eq("job_id", jobUrl.split("/").pop());
@@ -489,7 +489,7 @@ try {
     await laptop.goto(BASE);
     await laptop.locator("li", { hasText: "Bedroom wardrobe" }).getByRole("button", { name: "Copy" }).click();
     await laptop.getByRole("heading", { name: "Bedroom wardrobe (copy)" }).waitFor();
-    checkEqual("all 5 lines of pieces are copied", await laptop.locator("section", { hasText: "Pieces" }).first().locator("li").count(), WARDROBE.length);
+    checkEqual("all 5 lines of pieces are copied", await laptop.locator("main section", { has: laptop.getByRole("button", { name: "Add piece" }) }).locator("li").count(), WARDROBE.length);
     const original = await admin.from("jobs").select("status").eq("id", jobUrl.split("/").pop()).single();
     checkEqual("the original job is untouched", original.data.status, "cut");
   });

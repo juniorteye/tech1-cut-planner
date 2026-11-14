@@ -119,6 +119,7 @@ function place(bin: Bin, piece: PlannerPiece, kerfMm: Mm, rule: SplitRule, turni
     name: piece.name,
     bandedLengths: piece.bandedLengths ?? 0,
     bandedWidths: piece.bandedWidths ?? 0,
+    ...(piece.section !== undefined && { section: piece.section }),
   });
 
   const restLength = free.lengthMm - lengthMm;

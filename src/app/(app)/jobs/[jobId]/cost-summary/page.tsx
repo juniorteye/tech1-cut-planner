@@ -42,7 +42,10 @@ export default async function CostSummaryPage({ params }: PageProps<"/jobs/[jobI
       </div>
 
       <section className="rounded-xl border border-line bg-card p-4 sm:p-5">
-        <p className="font-semibold">{job.name}</p>
+        <p className="font-semibold">
+          {job.name}
+          {(plan.sets ?? 1) > 1 && ` × ${plan.sets} sets`}
+        </p>
         {job.customer && <p className="text-muted">For {job.customer}</p>}
 
         <table className="mt-4 w-full text-left">

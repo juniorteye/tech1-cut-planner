@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Board, Leftover, Piece, Timber } from "../types";
+import type { Board, Leftover, Piece, Section, Timber } from "../types";
 import { bandingByColour, describeEdges, jobBanding, pieceBandingMm, suggestBandingColour } from "./banding.ts";
 import { isGuillotine, packBoards, type BoardPackInput } from "./boards.ts";
 import { packPlanks } from "./planks.ts";
@@ -247,7 +247,7 @@ const twoByFour: Timber = {
   lengths: [{ lengthMm: 3658, pricePerPiece: 8000 }],
 };
 const piece = (over: Partial<Piece>): Piece => ({
-  ...record, id: "p", jobId: "j", materialId: "ply", name: "Side", lengthMm: 720, widthMm: 560, quantity: 2, grainLocked: false,
+  ...record, id: "p", jobId: "j", sectionId: null, materialId: "ply", name: "Side", lengthMm: 720, widthMm: 560, quantity: 2, grainLocked: false,
   bandedLengths: 0, bandedWidths: 0, ...over,
 });
 
@@ -418,4 +418,71 @@ test("boards to buy counts only new sheets, never offcuts from the store", () =>
   assert.equal(plan.buy[0].count, newSheets);
   assert.equal(plan.buy[0].count, 2);
   assert.equal(plan.boards.length, 3);
+});
+
+const section = (id: string, name: string, materialId: string, position: number): Section => ({
+  ...record, id, jobId: "j", name, materialId, position,
+});
+
+test("sets: 2 sets of the console is every part, board and metre of banding twice over", () => {
+  const one = planJob({ pieces: consolePieces("b48"), materials: [board4x8], leftovers: [], kerfMm: 3 });
+  const two = planJob({ pieces: consolePieces("b48"), materials: [board4x8], leftovers: [], kerfMm: 3, sets: 2 });
+  assert.equal(one.pieceCount, 27);
+  assert.equal(two.pieceCount, 54);
+  assert.equal(Math.round(two.banding![0].mm), 2 * 27412);
+  assert.equal(two.sets, 2);
+  assert.ok(two.buy[0].count >= 3 && two.buy[0].count <= 4, `bought ${two.buy[0].count}`);
+  assert.equal(two.groups![0].toBuy, two.buy[0].count);
+  assert.equal(Math.round(two.groups![0].bandingMm), 2 * 27412);
+  // The quantities typed in are left alone: only the plan is multiplied.
+  assert.equal(consolePieces("b48")[1].quantity, 4);
+});
+
+test("sections: parts are numbered section by section and carry their section's name", () => {
+  const grey: Board = { ...ply, id: "grey", name: "D-Grey 18 mm", bandingColour: "D-Grey" };
+  const back: Board = { ...ply, id: "back", name: "Back panel 6 mm", thicknessMm: 6, bandingColour: "Back panel 6 mm", noBanding: true };
+  const sections = [section("s1", "Miniyator", "grey", 0), section("s2", "B-Panels", "back", 1), section("s3", "D-Grey", "grey", 2)];
+  const plan = planJob({
+    pieces: [
+      // Entered out of order: the D-Grey part first, then a back panel, then a Miniyator part.
+      piece({ id: "a", sectionId: "s3", materialId: "grey", name: "Shelf", lengthMm: 2100, widthMm: 350, quantity: 1, bandedLengths: 1 }),
+      piece({ id: "b", sectionId: "s2", materialId: "back", name: "Back", lengthMm: 1000, widthMm: 800, quantity: 2, bandedLengths: 2 }),
+      piece({ id: "c", sectionId: "s1", materialId: "grey", name: "Side", lengthMm: 2040, widthMm: 835, quantity: 1, bandedLengths: 2, bandedWidths: 2 }),
+      piece({ id: "d", sectionId: null, materialId: "grey", name: "Loose", lengthMm: 500, widthMm: 300, quantity: 1 }),
+    ],
+    materials: [back, grey],
+    leftovers: [],
+    kerfMm: 3,
+    sections,
+  });
+  const placed = plan.boards.flatMap((b) => b.placements).sort((a, b) => a.number - b.number);
+  assert.deepEqual(
+    placed.map((p) => [p.number, p.name, p.section]),
+    [[1, "Side", "Miniyator"], [2, "Back", "B-Panels"], [3, "Back", "B-Panels"], [4, "Shelf", "D-Grey"], [5, "Loose", "Other parts"]],
+  );
+  // Grouped in list order, not Setup order: Miniyator's D-Grey comes before the back panels.
+  assert.deepEqual(
+    plan.groups!.map((g) => [g.materialName, g.sections, g.toBuy, g.bandingMm]),
+    [
+      // 2 × 2.04 + 2 × 0.835 = 5.75 m for the side, 2.10 m for the shelf.
+      ["D-Grey 18 mm", ["Miniyator", "D-Grey", "Other parts"], 1, 5750 + 2100],
+      ["Back panel 6 mm", ["B-Panels"], 1, 0],
+    ],
+  );
+  assert.deepEqual(plan.boards.map((b) => b.materialName), ["D-Grey 18 mm", "Back panel 6 mm"]);
+  assert.ok(plan.boards[0].placements.some((p) => p.number === 1), "Board 1 holds part 1");
+});
+
+test("sections: a timber section is grouped and numbered like the boards", () => {
+  const plan = planJob({
+    pieces: [piece({ id: "r", sectionId: "t1", materialId: "t", name: "Rail", lengthMm: 1000, widthMm: null, quantity: 2 })],
+    materials: [twoByFour],
+    leftovers: [],
+    kerfMm: 3,
+    sections: [section("t1", "Frame", "t", 0)],
+    sets: 3,
+  });
+  assert.equal(plan.pieceCount, 6);
+  assert.ok(plan.planks.flatMap((p) => p.cuts).every((cut) => cut.section === "Frame"));
+  assert.deepEqual(plan.groups!.map((g) => [g.kind, g.sections, g.toBuy]), [["timber", ["Frame"], 2]]);
 });

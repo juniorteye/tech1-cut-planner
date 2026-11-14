@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { ButtonLink } from "@/components/button-link";
 import { PlanBoards } from "@/components/plan-boards";
-import { getJob, getLeftovers, getMaterials, getPieces, getPlan, getWorkshop } from "@/lib/data";
+import { SetsBadge } from "@/components/sets-badge";
+import { getJob, getLeftovers, getMaterials, getPieces, getPlan, getSections, getWorkshop } from "@/lib/data";
 import { bandingByColour } from "@/lib/planner/banding";
 import { planJob } from "@/lib/planner/plan-job";
 import { quoteTotal } from "@/lib/planner/quote";
@@ -26,10 +27,11 @@ function wasteLabel(percent: number | null) {
 
 export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan">) {
   const { jobId } = await params;
-  const [workshop, job, pieces, materials, leftovers, saved] = await Promise.all([
+  const [workshop, job, pieces, sections, materials, leftovers, saved] = await Promise.all([
     getWorkshop(),
     getJob(jobId),
     getPieces(jobId),
+    getSections(jobId),
     getMaterials(),
     getLeftovers(),
     getPlan(jobId),
@@ -43,7 +45,8 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
   }
 
   // A draft is planned fresh every time and changes no stock. Only accepting saves it.
-  const plan = saved ?? planJob({ pieces, materials, leftovers, kerfMm: workshop.kerfMm });
+  const plan = saved ?? planJob({ pieces, materials, leftovers, kerfMm: workshop.kerfMm, sets: job.sets, sections });
+  const sets = plan.sets ?? 1;
   const unit = workshop.displayUnit;
   const sheets = plan.buy.filter((item) => item.widthMm !== null).reduce((sum, item) => sum + item.count, 0);
   const planks = plan.buy.filter((item) => item.widthMm === null).reduce((sum, item) => sum + item.count, 0);
@@ -55,6 +58,7 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
       <div>
         <h1 className="font-display text-3xl font-bold">Your cutting plan</h1>
         <p className="text-muted">{job.name}</p>
+        {sets > 1 && <SetsBadge sets={sets} className="mt-2" />}
       </div>
 
       {plan.unplaced.length > 0 && (
@@ -63,7 +67,8 @@ export default async function PlanPage({ params }: PageProps<"/jobs/[jobId]/plan
           <ul className="mt-1 list-disc pl-5 text-red-800">
             {plan.unplaced.map((piece) => (
               <li key={piece.number}>
-                {piece.name} ({piece.materialName})
+                {piece.name} ({piece.section ? `${piece.section}, ` : ""}
+                {piece.materialName})
               </li>
             ))}
           </ul>

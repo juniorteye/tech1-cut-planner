@@ -70,7 +70,7 @@ const PART_AREA_M2 = CONSOLE.reduce((sum, row) => sum + (Number(row.length) / 10
  * a proper share of the row without spilling out of the card.
  */
 async function measurePiecesList(page) {
-  return page.locator("main section", { has: page.getByRole("heading", { name: "Pieces" }) }).evaluate((card) => {
+  return page.locator("main section", { has: page.getByRole("button", { name: "Add piece", exact: true }) }).evaluate((card) => {
     const cardBox = card.getBoundingClientRect();
     return [...card.querySelectorAll("li")].map((li) => {
       const icon = li.querySelector("svg")?.getBoundingClientRect();
@@ -108,6 +108,7 @@ function checkPiecesList(rows, label) {
   check(`the pieces list is laid out properly ${label}`, rows.length > 0 && problems.length === 0, problems.slice(0, 4).join("; "));
 }
 
+const chosenBoard = (scope) => scope.locator("select[name=materialId]").first().evaluate((select) => select.selectedOptions[0]?.text);
 const totalsBar = (page) => page.getByRole("region", { name: "Totals so far" });
 
 /** Reads the totals bar as a user would: boards, banding and parts. */
@@ -480,15 +481,15 @@ try {
   });
 
   await section("The same console on the 9 × 7 board", async () => {
-    const bigUrl = await newJob(laptop, "Console on 9×7", "Mr Boateng");
+    const bigUrl = await newJob(laptop, "Console on 9×7", "Mr Boateng", LARGE);
     await enterConsole(laptop, LARGE);
     const totals = await readTotals(laptop);
     checkEqual("it fits on 1 board of 212 × 272 cm", totals.boards, 1);
     checkEqual("the banding is the same", `${totals.banding} m`, BANDING);
     await laptop.goto(bigUrl);
     checkEqual(
-      "coming back later, the 9 × 7 is still the chosen board",
-      await form(laptop, "Add piece").locator("select[name=materialId] option:checked").innerText(),
+      "coming back later, the section's 9 × 7 is the chosen board",
+      await chosenBoard(form(laptop, "Add piece")),
       LARGE,
     );
   });
@@ -685,6 +686,156 @@ try {
     check("and Satiya tape on its own", plan.includes("3.00 m edge banding · Satiya"), plan.slice(0, 400));
     check("the back panels are still planned", plan.includes(BACK));
     await laptop.screenshot({ path: `${OUTPUT}/4-kitchen-colours-plan.png`, fullPage: true });
+  });
+
+  await section("Sections: one heading per board, and 5 sets of kitchens", async () => {
+    const GREY = "D-Grey 18 mm 8×4";
+    const GREY_LARGE = "D-Grey 18 mm 9×7";
+    const SATIYA = "Satiya 18 mm";
+    const BACK = "B-Panel 6 mm";
+    const card = (name) => laptop.getByRole("region", { name, exact: true });
+    const addTo = async (sectionName, { length, width, quantity, name, board, edges }) => {
+      const pieceForm = card(sectionName).locator("form", { has: laptop.getByRole("button", { name: "Add piece", exact: true }) });
+      if (board) await pieceForm.locator("select[name=materialId]").selectOption({ label: board });
+      await typePart(pieceForm, { length, width, quantity });
+      if (edges) await markEdges(pieceForm, edges);
+      await pieceForm.locator("input[name=name]").fill(name);
+      await submit(pieceForm, "Add piece");
+      await card(sectionName).getByText(`${quantity} × ${name}`, { exact: true }).waitFor();
+    };
+    const addSectionNamed = async (name, board) => {
+      // The fold stays open after a section is added, so only open it when shut.
+      const fold = laptop.locator("details", { has: laptop.getByText("Add a section", { exact: true }) });
+      if ((await fold.getAttribute("open")) === null) await laptop.getByText("Add a section", { exact: true }).click();
+      const sectionForm = form(laptop, "Add section");
+      await sectionForm.locator("input[name=name]").fill(name);
+      await sectionForm.locator("select[name=materialId]").selectOption({ label: board });
+      await submit(sectionForm, "Add section");
+      await card(name || board).waitFor();
+    };
+
+    await laptop.goto(`${BASE}/jobs/new`);
+    await laptop.fill("input[name=name]", "Kitchens");
+    await laptop.fill("input[name=sectionName]", "D-Grey");
+    await laptop.locator("select[name=materialId]").selectOption({ label: GREY });
+    await laptop.getByRole("button", { name: "Create job" }).click();
+    await laptop.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
+    const kitchensUrl = laptop.url();
+    const kitchensId = kitchensUrl.split("/").pop();
+    await card("D-Grey").waitFor();
+    check("the new job opens with its first section", (await card("D-Grey").innerText()).includes(GREY));
+    checkEqual(
+      "a part in the D-Grey section starts on the D-Grey board",
+      await chosenBoard(card("D-Grey")),
+      GREY,
+    );
+
+    await addTo("D-Grey", { length: "35", width: "210", quantity: 7, name: "Side", edges: { long: 1, short: 0 } });
+    // Too long for the 8 × 4, so this one part is put on the 9 × 7 by hand.
+    await addTo("D-Grey", { length: "35", width: "260", quantity: 6, name: "Tall side", board: GREY_LARGE, edges: { long: 1, short: 0 } });
+    checkEqual(
+      "after a part on another board, the next part goes back to the section's board",
+      await chosenBoard(card("D-Grey")),
+      GREY,
+    );
+    await addSectionNamed("B-Panels", BACK);
+    checkEqual("a part in B-Panels needs no banding marks", await card("B-Panels").locator("fieldset").count(), 0);
+    await addTo("B-Panels", { length: "80", width: "100", quantity: 2, name: "Back" });
+    await addSectionNamed("", SATIYA);
+    check("a section left unnamed takes its board's name", (await card(SATIYA).count()) === 1);
+    await addTo(SATIYA, { length: "70", width: "150", quantity: 2, name: "Door", edges: { long: 1, short: 0 } });
+
+    const { data: pieces } = await admin.from("pieces").select("name, section_id, material_id, sections(name)").eq("job_id", kitchensId);
+    check("every part is saved under its section", pieces.length === 4 && pieces.every((piece) => piece.section_id !== null));
+    checkEqual("the tall sides stay in D-Grey on the 9 × 7", pieces.find((p) => p.name === "Tall side").sections.name, "D-Grey");
+
+    let totals = await readTotals(laptop);
+    // One set: 7 sides at 3 to a 121 cm wide sheet is 3 sheets; 6 tall sides fit one 9 × 7.
+    check("the totals give the D-Grey 8 × 4 on its own line", totals.text.includes(`${GREY}: 3 boards · 14.70 m banding`), totals.text);
+    check("the D-Grey 9 × 7 on its own line", totals.text.includes(`${GREY_LARGE}: 1 board · 15.60 m banding`), totals.text);
+    check("the back panels with 0 m", totals.text.includes(`${BACK}: 1 board · 0.00 m banding`), totals.text);
+    check("one D-Grey tape figure for both sizes", totals.text.includes(`30.30 m edge banding · ${GREY}`), totals.text);
+    checkEqual("17 parts for one set", totals.parts, 17);
+
+    const setsForm = form(laptop, "Save sets");
+    await setsForm.locator("input[name=sets]").fill("5");
+    await submit(setsForm, "Save sets");
+    await totalsBar(laptop).getByText("× 5 sets").waitFor();
+    totals = await readTotals(laptop);
+    check("5 sets shows × 5 sets at the top", totals.text.includes("× 5 sets"), totals.text);
+    checkEqual("5 sets is 85 parts", totals.parts, 85);
+    // 35 sides at 3 a sheet is 12 sheets; 30 tall sides at 6 a sheet is 5.
+    check("5 sets is 12 D-Grey 8 × 4 boards and 73.50 m of banding", totals.text.includes(`${GREY}: 12 boards · 73.50 m banding`), totals.text);
+    check("and 5 D-Grey 9 × 7 boards", totals.text.includes(`${GREY_LARGE}: 5 boards · 78.00 m banding`), totals.text);
+    check("D-Grey tape is 5 × 30.30 = 151.50 m", totals.text.includes(`151.50 m edge banding · ${GREY}`), totals.text);
+    check("Satiya tape is 5 × 3.00 = 15.00 m", totals.text.includes("15.00 m edge banding · Satiya"), totals.text);
+    const side = collapse(await card("D-Grey").locator("li", { hasText: "× Side" }).innerText());
+    check("a part still reads as typed, with the total for every set", side.includes("7 × Side") && side.includes("35 for 5 sets"), side);
+
+    // A part left from before sections still counts, under Other parts.
+    const { data: section } = await admin.from("sections").select("workshop_id, material_id").eq("job_id", kitchensId).eq("name", "D-Grey").single();
+    await admin.from("pieces").insert({ workshop_id: section.workshop_id, job_id: kitchensId, material_id: section.material_id, name: "Old shelf", length_mm: 500, width_mm: 300, quantity: 1 });
+    await laptop.reload();
+    check("a part with no section shows under Other parts", (await card("Other parts").innerText()).includes("1 × Old shelf"));
+    checkEqual("and counts in the totals", (await readTotals(laptop)).parts, 90);
+    await admin.from("pieces").delete().eq("job_id", kitchensId).eq("name", "Old shelf");
+
+    // Moving a section to another board takes the parts that followed it.
+    await laptop.reload();
+    const satiya = card(SATIYA);
+    await satiya.getByText("Change or remove this section").click();
+    const editForm = satiya.locator("form", { has: laptop.getByRole("button", { name: "Save section" }) });
+    await editForm.locator("input[name=name]").fill("Satiya doors");
+    await submit(editForm, "Save section");
+    await card("Satiya doors").waitFor();
+    check("a section can be renamed", (await card(SATIYA).count()) === 0);
+
+    await addSectionNamed("Spare", GREY);
+    await addTo("Spare", { length: "50", width: "30", quantity: 1, name: "Offcut test" });
+    await card("Spare").getByText("Change or remove this section").click();
+    await card("Spare").getByRole("button", { name: "Remove section and its 1 part" }).click();
+    await card("Spare").waitFor({ state: "detached" });
+    const { count: spareParts } = await admin.from("pieces").select("id", { count: "exact", head: true }).eq("job_id", kitchensId).eq("name", "Offcut test");
+    checkEqual("removing a section removes its parts", spareParts, 0);
+
+    const phoneView = await newPage(browser, { ...PHONE, hasTouch: true, isMobile: true });
+    await logIn(phoneView, owner);
+    await phoneView.waitForURL(`${BASE}/`);
+    for (const width of [390, 320]) {
+      await phoneView.setViewportSize({ width, height: 800 });
+      await phoneView.goto(kitchensUrl);
+      await phoneView.getByRole("region", { name: "D-Grey", exact: true }).waitFor();
+      await expectNoSidewaysScroll(phoneView, `the job with sections at ${width} px`);
+    }
+
+    const plan = await openPlan(laptop, kitchensUrl);
+    check("the plan says × 5 sets", plan.includes("× 5 sets"), plan.slice(0, 200));
+    const group = async (name) => collapse(await laptop.getByRole("region", { name, exact: true }).innerText());
+    check("the plan groups the D-Grey 8 × 4 boards under the D-Grey section", (await group(GREY)).includes("Section: D-Grey · 12 boards to buy"), (await group(GREY)).slice(0, 160));
+    check("the 9 × 7 boards too", (await group(GREY_LARGE)).includes("Section: D-Grey · 5 boards to buy"), (await group(GREY_LARGE)).slice(0, 160));
+    check("the back panels under B-Panels", (await group(BACK)).includes("Section: B-Panels"), (await group(BACK)).slice(0, 160));
+    const groupOrder = await laptop.locator("main section[aria-label] > div > h2").allInnerTexts();
+    checkEqual("the board groups follow the job's sections", groupOrder.join(" | "), [GREY, GREY_LARGE, BACK, SATIYA].join(" | "));
+    check("Board 1 holds part 1", (await laptop.getByRole("region", { name: GREY, exact: true }).getByRole("heading", { name: `Board 1: ${GREY}` }).count()) === 1);
+    await laptop.screenshot({ path: `${OUTPUT}/5-sections-plan.png`, fullPage: true });
+
+    await laptop.getByRole("button", { name: "Yes: accept this plan" }).click();
+    await laptop.waitForURL("**/cut-sheet");
+    await laptop.getByText("Numbered list").waitFor();
+    const rows = await laptop.locator("tbody tr").allInnerTexts();
+    checkEqual("the cut sheet lists every part of every set", rows.length, 85);
+    check("it is numbered section by section: D-Grey first", collapse(rows[0]).startsWith("1 D-Grey"), rows[0]);
+    check("and the Satiya doors last", collapse(rows.at(-1)).startsWith("85 Satiya doors"), rows.at(-1));
+    const { data: saved } = await admin.from("plans").select("plan").eq("job_id", kitchensId).single();
+    checkEqual("the saved plan remembers 5 sets", saved.plan.sets, 5);
+
+    await laptop.goto(BASE);
+    await laptop.locator("li", { hasText: "Kitchens" }).getByRole("button", { name: "Copy" }).click();
+    await laptop.getByRole("heading", { name: "Kitchens (copy)" }).waitFor();
+    const copyId = laptop.url().split("/").pop();
+    const { data: copiedSections } = await admin.from("sections").select("name").eq("job_id", copyId).order("position");
+    checkEqual("a copy keeps the sections in order", copiedSections.map((s) => s.name).join(", "), "D-Grey, B-Panels, Satiya doors");
+    checkEqual("and the 5 sets", (await readTotals(laptop)).parts, 85);
   });
 
   await section("Nothing went wrong behind the scenes", async () => {

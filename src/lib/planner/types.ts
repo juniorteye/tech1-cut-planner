@@ -17,12 +17,15 @@ export type PlannerPiece = {
   grainLocked: boolean;
   bandedLengths?: number;
   bandedWidths?: number;
+  /** The job section the part is listed under. */
+  section?: string;
 };
 
 export type PlannerCut = {
   number: number;
   name: string;
   lengthMm: Mm;
+  section?: string;
 };
 
 /** x runs along the sheet's length, which is also the grain direction. */
@@ -33,6 +36,8 @@ export type Placement = Rect & {
   /** Long and short sides banded, so turning does not change them. Missing on plans saved before banding. */
   bandedLengths?: number;
   bandedWidths?: number;
+  /** Missing on plans saved before sections. */
+  section?: string;
 };
 
 export type BoardLeftover = {
@@ -66,6 +71,7 @@ export type PlankLeftover = {
 export type PlankCut = {
   number: number;
   name: string;
+  section?: string;
   startMm: Mm;
   lengthMm: Mm;
 };
@@ -96,6 +102,21 @@ export type UnplacedPiece = {
   number: number;
   name: string;
   materialName: string;
+  section?: string;
+};
+
+/** Totals for one board or timber across the job: what the top of the job and the plan group by. */
+export type PlanGroup = {
+  materialId: string;
+  materialName: string;
+  kind: "board" | "timber";
+  /** The job sections whose parts are cut from it, in list order. */
+  sections: string[];
+  /** New sheets or planks to buy. */
+  toBuy: number;
+  fromStore: number;
+  /** This board's own banding. Its tape colour may be shared with other boards. */
+  bandingMm: Mm;
 };
 
 export type OffcutToSave = {
@@ -119,4 +140,8 @@ export type JobPlan = {
   leftoverCost: Pesewas;
   /** One line per tape colour. Missing on plans saved before banding; per board on plans saved before colours. */
   banding?: SavedBandingLine[];
+  /** How many sets every part was multiplied by. Missing on plans saved before sets (1). */
+  sets?: number;
+  /** One per board or timber used. Missing on plans saved before sections. */
+  groups?: PlanGroup[];
 };

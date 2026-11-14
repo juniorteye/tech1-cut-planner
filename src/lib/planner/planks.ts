@@ -74,7 +74,13 @@ function finishBar(bar: Bar, kerfMm: Mm, minLeftoverLengthMm: Mm): PackedPlank {
 
   let start = 0;
   const cuts = bar.cuts.map((cut) => {
-    const placed = { number: cut.number, name: cut.name, startMm: start, lengthMm: cut.lengthMm };
+    const placed = {
+      number: cut.number,
+      name: cut.name,
+      startMm: start,
+      lengthMm: cut.lengthMm,
+      ...(cut.section !== undefined && { section: cut.section }),
+    };
     start += cut.lengthMm + kerfMm;
     return placed;
   });

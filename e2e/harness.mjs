@@ -234,10 +234,12 @@ export async function waitForUnit(unit) {
   throw new Error(`waiting for the workshop unit to be saved as ${unit}`);
 }
 
-export async function newJob(page, name, customer) {
+/** The job's first section is on `board` when given, otherwise on the first board in Setup. */
+export async function newJob(page, name, customer, board) {
   await page.goto(`${BASE}/jobs/new`);
   await page.fill("input[name=name]", name);
   await page.fill("input[name=customer]", customer);
+  if (board) await page.locator("select[name=materialId]").selectOption({ label: board });
   await page.getByRole("button", { name: "Create job" }).click();
   await page.waitForURL(/\/jobs\/[0-9a-f-]{36}$/);
   return page.url();
@@ -287,7 +289,7 @@ export async function snapshotOtherWorkshops() {
   const { data: workshops } = await admin.from("workshops").select("id, name, kerf_mm, display_unit").order("id");
   const others = (workshops ?? []).filter((workshop) => !created.workshops.includes(workshop.id));
   const rows = [];
-  for (const table of ["materials", "jobs", "leftovers"]) {
+  for (const table of ["materials", "jobs", "sections", "pieces", "leftovers"]) {
     const { data } = await admin.from(table).select("*").in("workshop_id", others.map((w) => w.id)).order("id");
     rows.push(data);
   }
@@ -297,6 +299,7 @@ export async function snapshotOtherWorkshops() {
 export async function removeTestData() {
   for (const id of created.workshops) {
     await admin.from("pieces").delete().eq("workshop_id", id);
+    await admin.from("sections").delete().eq("workshop_id", id);
     await admin.from("leftovers").delete().eq("workshop_id", id);
     await admin.from("jobs").delete().eq("workshop_id", id);
     await admin.from("timber_lengths").delete().eq("workshop_id", id);

@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { ButtonLink } from "@/components/button-link";
 import { PlanBoards } from "@/components/plan-boards";
 import { PrintButton } from "@/components/print-button";
+import { SetsBadge } from "@/components/sets-badge";
 import { getJob, getPlan, getWorkshop } from "@/lib/data";
 import { bandingByColour, describeEdges } from "@/lib/planner/banding";
 import { formatMetres, formatSize } from "@/lib/units";
@@ -23,6 +24,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
       board.placements.map((placed) => ({
         number: placed.number,
         name: placed.name,
+        section: placed.section,
         size: formatSize(placed.lengthMm, placed.widthMm, unit),
         from: `Board ${index + 1}${placed.turned ? " (turned)" : ""}`,
         edges: describeEdges({ bandedLengths: placed.bandedLengths ?? 0, bandedWidths: placed.bandedWidths ?? 0 }),
@@ -32,6 +34,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
       plank.cuts.map((cut) => ({
         number: cut.number,
         name: cut.name,
+        section: cut.section,
         size: formatSize(cut.lengthMm, null, unit),
         from: plank.materialName,
         edges: "",
@@ -40,6 +43,9 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
   ].sort((a, b) => a.number - b.number);
   const banding = bandingByColour(plan.banding);
   const showEdges = banding.length > 0;
+  // Only worth a column when the list has more than one heading.
+  const showSections = new Set(rows.map((row) => row.section).filter(Boolean)).size > 1;
+  const sets = plan.sets ?? 1;
 
   return (
     <div className="space-y-5">
@@ -50,6 +56,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
             {job.name}
             {job.customer && ` · ${job.customer}`}
           </p>
+          {sets > 1 && <SetsBadge sets={sets} className="mt-2" />}
         </div>
         <div className="flex gap-2">
           <PrintButton />
@@ -80,6 +87,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
             <thead className="font-mono text-xs uppercase text-muted">
               <tr>
                 <th className="py-1 pr-2">#</th>
+                {showSections && <th className="py-1 pr-2">Section</th>}
                 <th className="py-1 pr-2">Piece</th>
                 <th className="py-1 pr-2">Size</th>
                 <th className="py-1 pr-2">From</th>
@@ -90,6 +98,7 @@ export default async function CutSheetPage({ params }: PageProps<"/jobs/[jobId]/
               {rows.map((row) => (
                 <tr key={row.number} className="border-t border-line">
                   <td className="py-1.5 pr-2 font-bold">{row.number}</td>
+                  {showSections && <td className="py-1.5 pr-2 text-sm">{row.section}</td>}
                   <td className="py-1.5 pr-2">{row.name}</td>
                   <td className="whitespace-nowrap py-1.5 pr-2 font-mono text-sm">{row.size}</td>
                   <td className="py-1.5 pr-2 text-sm text-muted">{row.from}</td>

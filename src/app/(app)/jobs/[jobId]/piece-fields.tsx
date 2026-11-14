@@ -28,26 +28,28 @@ export function PieceFields({
 
   // Size and quantity are held here rather than left to the form: a form reset
   // behind React's back would make it ignore retyping the previous part's width.
-  // After a part is saved the form is cleared. The board stays chosen, since
-  // a job is usually cut from one board, but the edges start blank again so
-  // each part's banding is marked on purpose.
+  // After a part is saved the form is cleared. The board goes back to the
+  // section's own board, since a part on another board (a long part on the
+  // 9 × 7) is a one-off, and the edges start blank so each part's banding is
+  // marked on purpose.
   useEffect(() => {
     const form = root.current?.closest("form");
     if (!form) return;
-    // The reset event fires before the form clears, so the board can be read here.
+    const fallback = defaultMaterialId ?? materials[0]?.id ?? "";
     const onReset = () => {
-      const keep = select.current?.value;
+      setMaterialId(fallback);
       setLength("");
       setWidth("");
       setQuantity("1");
       setEdges(NO_EDGES);
+      // The reset itself runs after this event, so the board is put back once it has.
       setTimeout(() => {
-        if (select.current && keep) select.current.value = keep;
+        if (select.current) select.current.value = fallback;
       });
     };
     form.addEventListener("reset", onReset);
     return () => form.removeEventListener("reset", onReset);
-  }, []);
+  }, [defaultMaterialId, materials]);
 
   const chosen = materials.find((material) => material.id === materialId);
   const isTimber = chosen?.kind === "timber";

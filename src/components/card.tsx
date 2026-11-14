@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function Card({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-line bg-card p-4 sm:p-5">
+    <section aria-label={title} className="rounded-xl border border-line bg-card p-4 sm:p-5">
       {title && <h2 className="mb-3 font-display text-2xl font-bold">{title}</h2>}
       {children}
     </section>

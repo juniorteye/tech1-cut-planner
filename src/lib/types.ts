@@ -72,10 +72,23 @@ export type Job = WorkshopRecord & {
   quoteMode: QuoteMode;
   wasteAllowancePercent: number;
   copiedFromJobId: string | null;
+  /** How many times the whole list is made ("5 set Kitchens"). Every part is multiplied by it. */
+  sets: number;
+};
+
+/** A heading in the job's list, such as Miniyator or B-Panels. One section, one board. */
+export type Section = WorkshopRecord & {
+  jobId: string;
+  name: string;
+  /** The board its parts use unless a part says otherwise. */
+  materialId: string;
+  position: number;
 };
 
 export type Piece = WorkshopRecord & {
   jobId: string;
+  /** Null only for parts added by the app before sections existed. */
+  sectionId: string | null;
   materialId: string;
   name: string;
   lengthMm: Mm;

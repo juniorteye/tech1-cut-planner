@@ -13,6 +13,7 @@ import type {
   Material,
   Piece,
   QuoteMode,
+  Section,
   TeamMember,
   TeamRole,
   Timber,
@@ -74,6 +75,18 @@ function toJob(row: Row): Job {
     quoteMode: row.quote_mode as QuoteMode,
     wasteAllowancePercent: Number(row.waste_allowance_percent),
     copiedFromJobId: row.copied_from_job_id as string | null,
+    sets: Number(row.sets ?? 1),
+  };
+}
+
+function toSection(row: Row): Section {
+  return {
+    id: row.id as string,
+    workshopId: row.workshop_id as string,
+    jobId: row.job_id as string,
+    name: row.name as string,
+    materialId: row.material_id as string,
+    position: Number(row.position),
   };
 }
 
@@ -82,6 +95,7 @@ function toPiece(row: Row): Piece {
     id: row.id as string,
     workshopId: row.workshop_id as string,
     jobId: row.job_id as string,
+    sectionId: (row.section_id as string | null) ?? null,
     materialId: row.material_id as string,
     name: row.name as string,
     lengthMm: Number(row.length_mm),
@@ -195,6 +209,17 @@ export async function getPieces(jobId: string) {
   const supabase = await createClient();
   const { data } = await supabase.from("pieces").select("*").eq("job_id", jobId).order("created_at");
   return (data ?? []).map(toPiece);
+}
+
+export async function getSections(jobId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("sections")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("position")
+    .order("created_at");
+  return (data ?? []).map(toSection);
 }
 
 export async function getLeftovers() {
