@@ -63,3 +63,31 @@ test("paste: pc, pcs, pic and pr mean pieces, with or without a number, and are 
   const [pic] = read("15.6 x 66.4 - 3 pic");
   assert.ok(pic.ok && pic.widthMm === 156 && pic.lengthMm === 664);
 });
+
+test("paste: the client's own lines read the pieces word as the quantity, never the name", () => {
+  const lines = read(["15.6 x 66.4 - 3 pic", "80 x 210 - 1pr", "33 x 270 - 2 prs"].join("\n"));
+  assert.deepEqual(
+    lines.map((line) => (line.ok ? [line.widthMm, line.lengthMm, line.quantity, line.name] : line.reason)),
+    [
+      [156, 664, 3, ""],
+      [800, 2100, 1, ""],
+      [330, 2700, 2, ""],
+    ],
+  );
+});
+
+test("paste: every pieces word, in any case, with or without a space after the number", () => {
+  const words = ["pc", "pcs", "pic", "pics", "pr", "prs", "piece", "pieces"];
+  for (const word of words) {
+    for (const written of [word, word.toUpperCase(), word[0].toUpperCase() + word.slice(1)]) {
+      for (const text of [`80 x 210 - 4 ${written}`, `80 x 210 - 4${written}`, `80 x 210 4${written}`]) {
+        const [line] = read(text);
+        assert.ok(line.ok, text);
+        assert.deepEqual([line.quantity, line.name], [4, ""], text);
+      }
+      // The word is dropped even when a name follows it.
+      const [named] = read(`80 x 210 - 4${written} door`);
+      assert.ok(named.ok && named.quantity === 4 && named.name === "door", `${written} door`);
+    }
+  }
+});

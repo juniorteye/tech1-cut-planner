@@ -304,6 +304,16 @@ try {
     check("all on the section's board", added.every((p) => p.material_id === ids[GREY]));
     checkEqual("the box is cleared afterwards", await box.inputValue(), "");
 
+    // His own lines: pic, pr and prs are the pieces word, never the name. Preview only.
+    await box.fill(["15.6 x 66.4 - 3 pic", "80 x 210 - 1pr", "33 x 270 - 2 prs"].join("\n"));
+    await card("Miniyator").getByRole("button", { name: "Read the list" }).click();
+    const rows = table.locator("tbody tr:not([data-unread])");
+    await rows.nth(2).waitFor();
+    const cells = await rows.evaluateAll((trs) => trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.innerText.trim())));
+    checkEqual("pic, pr and prs are read as the quantity", cells.map((c) => c[3]).join(" "), "3 1 2");
+    checkEqual("and none of them becomes the name", cells.map((c) => c.at(-1)).join("|"), "||");
+    checkEqual("the button counts them: 3 + 1 + 2", await card("Miniyator").getByRole("button", { name: /^Add \d+ parts?$/ }).innerText(), "Add 6 parts");
+
     await box.fill("35 x 25 - 6\n35 x 190 - 3 pcs");
     await card("Miniyator").getByRole("button", { name: "Read the list" }).click();
     await card("Miniyator").getByRole("button", { name: "Add 9 parts" }).click();
