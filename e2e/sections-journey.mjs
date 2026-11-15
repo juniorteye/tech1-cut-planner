@@ -302,6 +302,24 @@ try {
     checkEqual("3 sets is 18 parts", await partCount(), 18);
     check("and 3 × 10.40 = 31.20 m of tape", (await totalsText()).includes("31.20 m edge banding"), await totalsText());
     checkEqual("the database holds 3 sets", (await jobRow()).sets, 3);
+    // The button itself says what happened, and says what will happen next.
+    const setsBox = laptop.locator("input[name=sets]").filter({ visible: true });
+    const setsButton = laptop.locator("form", { has: setsBox }).locator("button");
+    checkEqual("saving turns the button into ✓ Saved", (await setsButton.innerText()).replace(/\s+/g, " ").trim(), "✓ Saved");
+    checkEqual("with nothing left to save, it is off", await setsButton.isDisabled(), true);
+    // Box and button are one joined control, the same height, on screen at every width.
+    for (const width of [360, 768, 1280]) {
+      await laptop.setViewportSize({ width, height: 800 });
+      const [box, button] = await Promise.all([setsBox.boundingBox(), setsButton.boundingBox()]);
+      check(`at ${width}px box and button are joined and the same height`, Math.abs(box.y - button.y) <= 1 && Math.abs(box.height - button.height) <= 1 && Math.abs(box.x + box.width - button.x) <= 1, JSON.stringify({ box, button }));
+      check(`at ${width}px the button is on screen`, button.x + button.width <= width, JSON.stringify({ box, button }));
+    }
+    await laptop.setViewportSize(LAPTOP.viewport);
+    await setsBox.fill("4");
+    checkEqual("changing the number brings back Save sets", (await setsButton.innerText()).trim(), "Save sets");
+    checkEqual("and it can be pressed again", await setsButton.isDisabled(), false);
+    await setsBox.fill("3");
+    checkEqual("back to the saved number, nothing to save", await setsButton.isDisabled(), true);
     const quantities = (await admin.from("pieces").select("quantity").eq("job_id", jobId)).data.map((p) => p.quantity).sort();
     checkEqual("the parts keep the quantities typed", quantities.join(","), "1,2,3");
   });

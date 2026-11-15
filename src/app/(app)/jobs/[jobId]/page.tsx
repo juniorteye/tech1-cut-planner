@@ -26,11 +26,11 @@ import {
   splitPiece,
   saveQuoteSettings,
   saveSection,
-  saveSets,
 } from "../actions";
 import { PasteList } from "./paste-list";
 import { PieceEditor } from "./piece-editor";
 import { PieceFields } from "./piece-fields";
+import { SetsForm } from "./sets-form";
 
 export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
   const { jobId } = await params;
@@ -68,18 +68,7 @@ export default async function JobPage({ params }: PageProps<"/jobs/[jobId]">) {
           {job.customer && <p className="text-muted">{job.customer}</p>}
         </div>
         {editable ? (
-          <ActionForm
-            action={saveSets}
-            submitLabel="Save sets"
-            pendingLabel="Saving…"
-            subtle
-            className="flex items-end gap-2 [&_button]:min-h-10"
-          >
-            <input type="hidden" name="jobId" value={job.id} />
-            <div className="w-28">
-              <FormField label="How many sets" name="sets" type="number" min={1} max={999} defaultValue={job.sets} required />
-            </div>
-          </ActionForm>
+          <SetsForm jobId={job.id} sets={job.sets} />
         ) : (
           job.sets > 1 && <SetsBadge sets={job.sets} />
         )}
