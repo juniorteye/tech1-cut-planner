@@ -62,6 +62,9 @@ try {
   for (const path of ["/", "/setup", "/leftovers", "/account", "/jobs/new"]) {
     await visit(`opening ${path}`, () => page.goto(`${BASE}${path}`));
   }
+  // The offline helper saves scripts by name; the dev server reuses names, so it must not run here.
+  const workers = await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length);
+  check("no offline helper runs in development, so edits always show", workers === 0, `${workers} registered`);
   await page.goto(`${BASE}/`);
   await visit("going to New job from the jobs list", () => page.getByRole("link", { name: /new job/i }).first().click());
 

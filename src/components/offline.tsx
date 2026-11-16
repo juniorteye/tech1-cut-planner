@@ -13,7 +13,14 @@ function subscribe(onChange: () => void) {
 
 export function ServiceWorker() {
   useEffect(() => {
-    navigator.serviceWorker?.register("/sw.js");
+    if (process.env.NODE_ENV === "production") {
+      navigator.serviceWorker?.register("/sw.js");
+      return;
+    }
+    // The dev server keeps the same file names while their contents change, so a
+    // saved copy would hide every edit. Remove it and what it saved.
+    navigator.serviceWorker?.getRegistrations().then((all) => all.forEach((registration) => registration.unregister()));
+    window.caches?.keys().then((keys) => keys.forEach((key) => window.caches.delete(key)));
   }, []);
   return null;
 }

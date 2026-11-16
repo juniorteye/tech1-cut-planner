@@ -298,7 +298,7 @@ export async function splitPiece(_state: ActionResult, data: FormData): Promise<
   return { savedAt: Date.now() };
 }
 
-/** "Too long for 242 × 121 cm. Use 272 × 212 cm?": moves one part to another board of the same kind. */
+/** "Too long for 242 × 121 cm. Use 282 × 212 cm?": moves one part to another board of the same kind. */
 export async function movePieceToBoard(_state: ActionResult, data: FormData): Promise<ActionResult> {
   const jobId = text(data, "jobId");
   const locked = await lockedError(jobId);

@@ -1,6 +1,6 @@
 // Entering a long kitchen list fast, and what happens to parts that do not
 // fit: quick entry by keyboard, the quick edge buttons, pasting a list,
-// editing a part, notes, "Use 272 × 212 cm?", "Split into 2 pieces", the
+// editing a part, notes, "Use 282 × 212 cm?", "Split into 2 pieces", the
 // shopping list with Copy, WhatsApp and Print, and drawings to scale.
 // Run with: npm run test:entry
 //
@@ -105,7 +105,7 @@ try {
     });
     const { data: boards, error } = await admin
       .from("materials")
-      .insert([board(GREY), board(GREY_BIG, { length_mm: 2720, width_mm: 2120, price_per_sheet: 80000 }), board(BACK, { thickness_mm: 6, banding_colour: BACK, no_banding: true, price_per_sheet: 20000 })])
+      .insert([board(GREY), board(GREY_BIG, { length_mm: 2820, width_mm: 2120, price_per_sheet: 80000 }), board(BACK, { thickness_mm: 6, banding_colour: BACK, no_banding: true, price_per_sheet: 20000 })])
       .select("id, name");
     if (error) throw new Error(error.message);
     const { data: timber } = await admin.from("materials").insert({ workshop_id: workshopId, kind: "timber", name: SHORT }).select("id, name");
@@ -169,8 +169,12 @@ try {
     check("the totals say Can't plan instead of a board count", text.includes("Can't plan 6 parts don't fit") && !/\d+ boards? to buy/.test(text), text);
     check("and name the part once, with how many", text.includes("Doesn't fit any board: 6 × Part 4 (Miniyator)"), text);
     const warning = collapse(await row("Miniyator", "Part 4").getByRole("alert").innerText());
-    check("its row says why and offers the 9 × 7", warning.includes("Too long for 242 × 121 cm. Use 272 × 212 cm?") && warning.includes(`It fits ${GREY_BIG}`), warning);
-    await row("Miniyator", "Part 4").getByRole("button", { name: "Use 272 × 212 cm", exact: true }).click();
+    check("its row says why and offers the 9 × 7 or a joint", warning.includes("Too long for 242 × 121 cm. Use 282 × 212 cm or split it?") && warning.includes(`It fits ${GREY_BIG}. Or split it into 2 pieces`), warning);
+    const choices = row("Miniyator", "Part 4").getByRole("alert").getByRole("button");
+    checkEqual("both choices are buttons", (await choices.allInnerTexts()).join(" | "), "Use 282 × 212 cm | Split into 2 pieces");
+    const [useBox, splitBox] = await Promise.all([0, 1].map((i) => choices.nth(i).boundingBox()));
+    check("side by side, the same height", Math.abs(useBox.y - splitBox.y) <= 1 && Math.abs(useBox.height - splitBox.height) <= 1 && splitBox.x > useBox.x + useBox.width, JSON.stringify({ useBox, splitBox }));
+    await row("Miniyator", "Part 4").getByRole("button", { name: "Use 282 × 212 cm", exact: true }).click();
     await row("Miniyator", "Part 4").getByRole("alert").waitFor({ state: "detached" });
     checkEqual("one tap moves it to the 9 × 7", (await pieceNamed("Part 4")).material_id, ids[GREY_BIG]);
     checkEqual("keeping its banding", (await pieceNamed("Part 4")).banded_lengths, 1);
@@ -179,16 +183,17 @@ try {
   });
 
   await section("A part longer than every board: split into 2 pieces", async () => {
-    await typeLine("Miniyator", { width: "10", length: "280", quantity: 20, edges: "1 long + 2 short" });
+    await typeLine("Miniyator", { width: "10", length: "290", quantity: 20, edges: "1 long + 2 short" });
     const text = await totals();
     check("20 plinths are one line, not 20", text.includes("Doesn't fit any board: 20 × Part 5 (Miniyator)") && !text.includes("Part 5, Part 5"), text);
     const warning = collapse(await row("Miniyator", "Part 5").getByRole("alert").innerText());
     check("the row says it fits no board", warning.includes("Too long for 242 × 121 cm. It fits no board in Setup"), warning);
+    checkEqual("and offers only the split", (await row("Miniyator", "Part 5").getByRole("alert").getByRole("button").allInnerTexts()).join(" | "), "Split into 2 pieces");
 
     const plan = await openPlan(laptop, jobUrl);
     check("the plan says it can't plan", plan.includes("Can't plan: some parts don't fit"), plan.slice(0, 300));
     checkEqual("the plan lists the 20 as one line", await laptop.getByRole("alert").locator("li").count(), 1);
-    check("with the size", plan.includes("20 × Part 5 · 280 × 10 cm (Miniyator, D-Grey 8×4)"), plan.slice(0, 400));
+    check("with the size", plan.includes("20 × Part 5 · 290 × 10 cm (Miniyator, D-Grey 8×4)"), plan.slice(0, 400));
     checkEqual("no board count", await laptop.getByText(/^boards? to buy$/).count(), 0);
     checkEqual("no shopping list", await laptop.getByRole("region", { name: "Shopping list" }).count(), 0);
     checkEqual("and it cannot be accepted", await laptop.getByRole("button", { name: "Yes: accept this plan" }).count(), 0);
@@ -202,12 +207,20 @@ try {
     await card("Miniyator").getByText("20 × Part 5 (2 of 2)").waitFor();
     const halves = (await pieces()).filter((p) => p.name.startsWith("Part 5"));
     checkEqual("the part is replaced by two halves", halves.map((p) => p.name).join(", "), "Part 5 (1 of 2), Part 5 (2 of 2)");
-    check("each half is 140 cm long and 10 cm wide", halves.every((p) => Number(p.length_mm) === 1400 && Number(p.width_mm) === 100));
+    check("each half is 145 cm long and 10 cm wide", halves.every((p) => Number(p.length_mm) === 1450 && Number(p.width_mm) === 100));
     check("both keep the 20", halves.every((p) => p.quantity === 20));
     check("both keep the long-side banding", halves.every((p) => p.banded_lengths === 1));
     checkEqual("each half keeps one end's short edge", halves.map((p) => p.banded_widths).join(","), "1,1");
     checkEqual("the banding total is exactly the same", (await totals()).match(/([\d.]+) m edge banding/)?.[1], bandingBefore);
     check("and now everything fits", !(await totals()).includes("Can't plan"));
+
+    // Each board in the totals bar sits on its own line, never run together.
+    const perBoard = laptop.getByRole("region", { name: "Totals so far" }).getByRole("list", { name: "Per board" }).locator("li");
+    const boardLines = await perBoard.evaluateAll((items) => items.map((li) => ({ text: li.innerText, top: li.getBoundingClientRect().top })));
+    check("the totals list more than one board here", boardLines.length >= 2, JSON.stringify(boardLines));
+    check("each board is on its own line", new Set(boardLines.map((line) => Math.round(line.top))).size === boardLines.length, JSON.stringify(boardLines));
+    const listText = await laptop.getByRole("list", { name: "Per board" }).innerText();
+    check("and copied text never runs \"banding\" into the next board", !/banding\S/.test(listText) && listText.split("\n").length === boardLines.length, JSON.stringify(listText));
   });
 
   await section("Timber too long for its planks splits the same way", async () => {
@@ -325,7 +338,7 @@ try {
     const plan = await openPlan(laptop, jobUrl);
     const shopping = laptop.getByRole("region", { name: "Shopping list" });
     const list = collapse(await shopping.innerText());
-    check("the shopping list has the D-Grey 9 × 7", list.includes(`${GREY_BIG} 272 × 212 cm · GH¢ 800.00 each`), list);
+    check("the shopping list has the D-Grey 9 × 7", list.includes(`${GREY_BIG} 282 × 212 cm · GH¢ 800.00 each`), list);
     check("the D-Grey 8 × 4", list.includes(`${GREY} 242 × 121 cm · GH¢ 500.00 each`), list);
     check("the back panel", list.includes(`${BACK} 242 × 121 cm · GH¢ 200.00 each`), list);
     check("the planks", list.includes(`${SHORT} 243.8 cm · GH¢ 60.00 each`), list);
@@ -352,9 +365,9 @@ try {
     const big = scales.find((s) => s.label.startsWith(GREY_BIG));
     const small = scales.find((s) => s.label.startsWith(GREY));
     checkEqual("the 9 × 7 is drawn full width", big?.scale, 100);
-    // 242 / 272 = 89 %.
-    checkEqual("the 8 × 4 is drawn at 242 / 272 of it", small?.scale, 89);
-    check("and really is narrower on screen", small && big && Math.abs(small.width / big.width - 242 / 272) < 0.01, `${small?.width} vs ${big?.width}`);
+    // 242 / 282 = 85.8 %.
+    checkEqual("the 8 × 4 is drawn at 242 / 282 of it", small?.scale, 85.8);
+    check("and really is narrower on screen", small && big && Math.abs(small.width / big.width - 242 / 282) < 0.01, `${small?.width} vs ${big?.width}`);
     check("the plan says it is to scale", plan.includes("Every board and plank is drawn to scale."));
     await laptop.screenshot({ path: `${OUTPUT}/1-plan.png`, fullPage: true });
 

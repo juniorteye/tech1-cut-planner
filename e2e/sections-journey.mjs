@@ -133,7 +133,7 @@ try {
       .from("materials")
       .insert([
         board(GREY, { banding_colour: "Grey" }),
-        board(GREY_BIG, { banding_colour: "Grey", length_mm: 2720, width_mm: 2120, price_per_sheet: 80000 }),
+        board(GREY_BIG, { banding_colour: "Grey", length_mm: 2820, width_mm: 2120, price_per_sheet: 80000 }),
         board(OAK),
         board(BACK, { thickness_mm: 6, no_banding: true }),
         board(SPARE),

@@ -7,8 +7,11 @@ import type { BoardType, Mm } from "./types";
  */
 export const STANDARD_SHEET = { lengthMm: 2420, widthMm: 1210 };
 
-/** 9 × 7 ft at the same 30.25 cm to the foot: 272 × 212 cm. */
-export const LARGE_SHEET = { lengthMm: 2720, widthMm: 2120 };
+/**
+ * 9 × 7 ft as the client's supplier sells it: 282 × 212 cm, confirmed by the
+ * client. It is not 9 × 30.25 cm, so it is written out, not worked out.
+ */
+export const LARGE_SHEET = { lengthMm: 2820, widthMm: 2120 };
 
 /** Lengths the market sells planks in, in feet. */
 export const PLANK_LENGTHS_FT = [8, 10, 12, 14, 16];

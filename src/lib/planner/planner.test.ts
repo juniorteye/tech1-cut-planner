@@ -340,7 +340,7 @@ test("banding: timber never counts, and each board material is totalled apart", 
 
 test("banding colours: boards sharing a tape colour share one total", () => {
   const grey48: Board = { ...ply, id: "g48", name: "D-Grey 8×4", bandingColour: "D-Grey" };
-  const grey97: Board = { ...ply, id: "g97", name: "D-Grey 9×7", bandingColour: "d-grey ", lengthMm: 2720, widthMm: 2120 };
+  const grey97: Board = { ...ply, id: "g97", name: "D-Grey 9×7", bandingColour: "d-grey ", lengthMm: 2820, widthMm: 2120 };
   const satiya: Board = { ...ply, id: "sat", name: "Satiya", bandingColour: "Satiya" };
   const lines = jobBanding(
     [
@@ -384,7 +384,7 @@ test("banding colours: a new board takes the tape of the same board in another s
     { name: "Back panel 6 mm", bandingColour: "Back panel 6 mm", noBanding: true },
   ];
   assert.equal(suggestBandingColour("D-Grey 18 mm 9 x 7", existing), "D-Grey 18 mm 8×4");
-  assert.equal(suggestBandingColour("d-grey 18 mm 272 × 212 cm", existing), "D-Grey 18 mm 8×4");
+  assert.equal(suggestBandingColour("d-grey 18 mm 282 × 212 cm", existing), "D-Grey 18 mm 8×4");
   assert.equal(suggestBandingColour("Satiya", existing), "Satiya tape");
   assert.equal(suggestBandingColour("Miniyator 18 mm 9×7", existing), "Miniyator");
   assert.equal(suggestBandingColour("Miniyator 9×7", existing), "Miniyator");
@@ -407,8 +407,8 @@ test("the console on the client's 121 × 242 cm board: every part placed, bandin
   assert.deepEqual([top.bandedLengths, top.bandedWidths], [1, 2]);
 });
 
-test("a 212 × 272 cm board takes the whole console on one sheet", () => {
-  const big: Board = { ...ply, id: "big", name: "Board 7×9", lengthMm: 2720, widthMm: 2120 };
+test("a 212 × 282 cm board takes the whole console on one sheet", () => {
+  const big: Board = { ...ply, id: "big", name: "Board 7×9", lengthMm: 2820, widthMm: 2120 };
   const plan = planJob({ pieces: consolePieces("big"), materials: [big], leftovers: [], kerfMm: 3 });
   assert.equal(plan.unplaced.length, 0);
   assert.equal(plan.buy[0].count, 1);
@@ -523,7 +523,7 @@ test("banding colours: the longest colour a name starts with wins, and sizes in 
   assert.equal(suggestBandingColour("Grey 18 mm", boards), "Grey");
   assert.equal(suggestBandingColour("Greyish", boards), null);
   assert.equal(suggestBandingColour("Walnut 18 mm 9×7", boards), "Walnut");
-  assert.equal(suggestBandingColour("WALNUT 18 MM 272 x 212 cm", boards), "Walnut");
+  assert.equal(suggestBandingColour("WALNUT 18 MM 282 x 212 cm", boards), "Walnut");
 });
 
 test("without sections a plan is made exactly as before: Setup order, no section names", () => {
@@ -614,8 +614,8 @@ test("split: halves the long side and keeps the banding total exactly, whatever 
 
 test("fit: a part too long for the 8 × 4 is offered the 9 × 7 that takes the same tape", () => {
   const grey48: Board = { ...board4x8, id: "g48", name: "D-Grey 8×4", bandingColour: "D-Grey" };
-  const grey97: Board = { ...board4x8, id: "g97", name: "D-Grey 9×7", bandingColour: "D-Grey", lengthMm: 2720, widthMm: 2120 };
-  const oak97: Board = { ...board4x8, id: "o97", name: "Oak 9×7", bandingColour: "Oak", lengthMm: 2720, widthMm: 2120 };
+  const grey97: Board = { ...board4x8, id: "g97", name: "D-Grey 9×7", bandingColour: "D-Grey", lengthMm: 2820, widthMm: 2120 };
+  const oak97: Board = { ...board4x8, id: "o97", name: "Oak 9×7", bandingColour: "Oak", lengthMm: 2820, widthMm: 2120 };
   const huge: Board = { ...board4x8, id: "big", name: "Huge", bandingColour: "Huge", lengthMm: 3050, widthMm: 1830 };
   const all = [huge, oak97, grey48, grey97, twoByFour];
   const part = (lengthMm: number, widthMm: number | null, grainLocked = false) => ({ lengthMm, widthMm, grainLocked });
@@ -628,10 +628,13 @@ test("fit: a part too long for the 8 × 4 is offered the 9 × 7 that takes the s
   assert.ok(wide.kind === "switch" && wide.to.id === "g97");
   // 130 × 200 fits the length of the 8 × 4 but not its width.
   assert.equal((fitAdvice(part(1300, 2000), grey48, all) as { reason: string }).reason, "wide");
-  // 10 × 280 is longer than the 9 × 7 too, but the 305 cm board takes it.
+  // The client's 10 × 280 plinth fits the 9 × 7 now that it is 282 cm long.
   const plinth = fitAdvice(part(100, 2800), grey48, all);
-  assert.ok(plinth.kind === "switch" && plinth.to.id === "big");
-  assert.deepEqual(fitAdvice(part(100, 2800), grey48, [grey48, grey97]), { kind: "split", reason: "long" });
+  assert.ok(plinth.kind === "switch" && plinth.to.id === "g97", JSON.stringify(plinth));
+  // 10 × 290 is longer than the 9 × 7 too, but the 305 cm board takes it.
+  const longer = fitAdvice(part(100, 2900), grey48, all);
+  assert.ok(longer.kind === "switch" && longer.to.id === "big");
+  assert.deepEqual(fitAdvice(part(100, 2900), grey48, [grey48, grey97]), { kind: "split", reason: "long" });
   // With the grain locked a part cannot be turned to fit.
   assert.ok(fitsBoard(part(1200, 2000), grey48));
   assert.ok(!fitsBoard(part(1200, 2000, true), grey48));

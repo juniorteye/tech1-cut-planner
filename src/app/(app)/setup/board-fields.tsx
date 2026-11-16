@@ -57,7 +57,7 @@ export function BoardFields({ board, boards }: { board?: Board; boards: Board[] 
       </SelectField>
       <SelectField label="Sheet size" name="size" value={size} onChange={(e) => setSize(e.target.value)}>
         <option value="standard">8 × 4 ft (242 × 121 cm)</option>
-        <option value="large">9 × 7 ft (272 × 212 cm)</option>
+        <option value="large">9 × 7 ft (282 × 212 cm)</option>
         <option value="other">Other size</option>
       </SelectField>
       {size === "other" && (

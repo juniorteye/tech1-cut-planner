@@ -310,37 +310,48 @@ function FitWarning({
   jobId: string;
 }) {
   const problem = `Too ${advice.reason} for ${sheetSize(own, unit)}.`;
+  const split = (
+    <ActionForm action={splitPiece} submitLabel="Split into 2 pieces" pendingLabel="Splitting…" className="[&_button]:mt-2">
+      <input type="hidden" name="id" value={piece.id} />
+      <input type="hidden" name="jobId" value={jobId} />
+    </ActionForm>
+  );
+  // Too long but a bigger board takes it: he chooses between that board and a joint.
+  // Too wide, halving the length would not help, so only the bigger board is offered.
+  const canSplit = advice.reason === "long";
   return (
     <div role="alert" className="basis-full rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
       {advice.kind === "switch" ? (
         <>
           <p className="font-semibold">
-            {problem} Use {sheetSize(advice.to, unit)}?
+            {problem} Use {sheetSize(advice.to, unit)}
+            {canSplit ? " or split it?" : "?"}
           </p>
-          <p>It fits {advice.to.name}.</p>
+          <p>
+            It fits {advice.to.name}.
+            {canSplit && " Or split it into 2 pieces to be joined: the same width and banding, half the length each."}
+          </p>
           {editable && (
-            <ActionForm
-              action={movePieceToBoard}
-              submitLabel={`Use ${sheetSize(advice.to, unit)}`}
-              pendingLabel="Moving…"
-              className="[&_button]:mt-2"
-            >
-              <input type="hidden" name="id" value={piece.id} />
-              <input type="hidden" name="jobId" value={jobId} />
-              <input type="hidden" name="materialId" value={advice.to.id} />
-            </ActionForm>
+            <div className="flex flex-wrap items-start gap-x-2">
+              <ActionForm
+                action={movePieceToBoard}
+                submitLabel={`Use ${sheetSize(advice.to, unit)}`}
+                pendingLabel="Moving…"
+                className="[&_button]:mt-2"
+              >
+                <input type="hidden" name="id" value={piece.id} />
+                <input type="hidden" name="jobId" value={jobId} />
+                <input type="hidden" name="materialId" value={advice.to.id} />
+              </ActionForm>
+              {canSplit && split}
+            </div>
           )}
         </>
       ) : (
         <>
           <p className="font-semibold">{problem} It fits no board in Setup, so it cannot be planned.</p>
           <p>Split it into 2 pieces to be joined: the same width and banding, half the length each.</p>
-          {editable && (
-            <ActionForm action={splitPiece} submitLabel="Split into 2 pieces" pendingLabel="Splitting…" className="[&_button]:mt-2">
-              <input type="hidden" name="id" value={piece.id} />
-              <input type="hidden" name="jobId" value={jobId} />
-            </ActionForm>
-          )}
+          {editable && split}
         </>
       )}
     </div>
@@ -404,9 +415,10 @@ function LiveTotals({ plan }: { plan: JobPlan }) {
         </p>
         {sets > 1 && <SetsBadge sets={sets} className="self-center !py-0.5 !text-sm" />}
       </div>
-      <ul className="flex flex-wrap gap-x-4 text-sm text-muted">
+      {/* One board per line, so two boards never read as one ("3.29 m bandingPlywood…"). */}
+      <ul aria-label="Per board" className="mt-1 space-y-0.5 text-sm text-muted">
         {groups.map((group) => (
-          <li key={group.materialId}>
+          <li key={group.materialId} className="block">
             <span className="font-semibold text-ink">{group.materialName}:</span>{" "}
             {stuckBoards.has(group.materialName) ? (
               <span className="font-semibold text-red-700">can&apos;t plan</span>

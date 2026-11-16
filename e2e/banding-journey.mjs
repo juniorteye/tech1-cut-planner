@@ -233,15 +233,15 @@ try {
     await large.locator("input[name=price]").fill("700");
     await submit(large, "Add board");
     await laptop.locator("summary", { hasText: LARGE }).waitFor();
-    check("the 9 × 7 is saved at 272 × 212 cm", (await laptop.locator("summary", { hasText: LARGE }).innerText()).includes("272 × 212 cm"));
+    check("the 9 × 7 is saved at 282 × 212 cm", (await laptop.locator("summary", { hasText: LARGE }).innerText()).includes("282 × 212 cm"));
 
     const { data: boards } = await admin.from("materials").select("name, length_mm, width_mm").eq("workshop_id", created.workshops[0]).eq("kind", "board");
     const sizeOf = (name) => boards.find((b) => b.name === name);
     check("in the database the 4 × 8 is 2420 × 1210 mm", Number(sizeOf(SMALL).length_mm) === 2420 && Number(sizeOf(SMALL).width_mm) === 1210);
-    check("in the database the 9 × 7 is 2720 × 2120 mm", Number(sizeOf(LARGE).length_mm) === 2720 && Number(sizeOf(LARGE).width_mm) === 2120);
+    check("in the database the 9 × 7 is 2820 × 2120 mm", Number(sizeOf(LARGE).length_mm) === 2820 && Number(sizeOf(LARGE).width_mm) === 2120);
 
     await laptop.locator("summary", { hasText: LARGE }).click();
-    checkEqual("opening the 9 × 7 again shows its size picked", await laptop.locator("details[open] select[name=size] option:checked").first().innerText(), "9 × 7 ft (272 × 212 cm)");
+    checkEqual("opening the 9 × 7 again shows its size picked", await laptop.locator("details[open] select[name=size] option:checked").first().innerText(), "9 × 7 ft (282 × 212 cm)");
 
     const timberForm = form(laptop, "Add timber");
     await timberForm.locator("input[name=name]").fill(TIMBER);
@@ -391,7 +391,7 @@ try {
     check("no board count is shown while it does not fit", !/\d+ boards? to buy/.test(tooBig.text), tooBig.text);
     check("the totals name it", tooBig.text.includes("Doesn't fit any board: 1 × Part 9"), tooBig.text);
     const row = collapse(await laptop.locator("li", { hasText: "× Part 9" }).innerText());
-    check("its row offers the 9 × 7", row.includes("Too long for 242 × 121 cm. Use 272 × 212 cm?"), row);
+    check("its row offers the 9 × 7 or a joint", row.includes("Too long for 242 × 121 cm. Use 282 × 212 cm or split it?"), row);
     const plan = await openPlan(laptop, consoleUrl);
     check("the plan says it can't plan", plan.includes("Can't plan: some parts don't fit"), plan.slice(0, 200));
     check("and names the part with its size", plan.includes("1 × Part 9 · 250 × 50 cm"), plan.slice(0, 400));
@@ -496,7 +496,7 @@ try {
     const bigUrl = await newJob(laptop, "Console on 9×7", "Mr Boateng", LARGE);
     await enterConsole(laptop, LARGE);
     const totals = await readTotals(laptop);
-    checkEqual("it fits on 1 board of 212 × 272 cm", totals.boards, 1);
+    checkEqual("it fits on 1 board of 212 × 282 cm", totals.boards, 1);
     checkEqual("the banding is the same", `${totals.banding} m`, BANDING);
     await laptop.goto(bigUrl);
     checkEqual(
