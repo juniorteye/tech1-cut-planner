@@ -11,7 +11,7 @@ export function AppNav() {
       <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-3 sm:gap-6">
         <Link href="/" className="flex min-h-10 items-center gap-2 font-display text-xl font-bold">
           <LogoBadge className="size-9 sm:size-10" />
-          Workshop Cut Planner
+          Tech1 Cut Planner
         </Link>
         <LogOutButton />
         <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-line bg-card sm:static sm:gap-1 sm:border-0 sm:bg-transparent">

@@ -19,8 +19,10 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Workshop Cut Planner",
+  title: "Tech1 Cut Planner",
   description: "Plan your cuts, buy the right amount of wood and quote faster.",
+  // iPhone: opens full screen from the home screen, named like the Android app.
+  appleWebApp: { capable: true, title: "Tech1 Cuts", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

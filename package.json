@@ -15,7 +15,8 @@
     "test:entry": "next build && node --env-file=.env.local e2e/entry-journey.mjs",
     "test:all": "npm test && next build && node --env-file=.env.local e2e/client-journey.mjs && node --env-file=.env.local e2e/banding-journey.mjs && node --env-file=.env.local e2e/sections-journey.mjs && node --env-file=.env.local e2e/entry-journey.mjs",
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
-    "logo": "node scripts/make-logo-images.mjs"
+    "logo": "node scripts/make-logo-images.mjs",
+    "test:install": "next build && node --env-file=.env.local e2e/install-journey.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
